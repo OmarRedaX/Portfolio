@@ -45,6 +45,11 @@ export interface ProjectLinks {
   overview?: string;
 }
 
+export interface ProjectMetric {
+  label: string;
+  value: string;
+}
+
 export interface Project {
   slug: string;
   name: string;
@@ -53,6 +58,7 @@ export interface Project {
   stack: string[];
   description: string;
   highlights?: string[];
+  metrics?: ProjectMetric[];
   status?: string;
   links: ProjectLinks;
   featured: boolean;
@@ -89,4 +95,5 @@ export interface ResumeContent {
   experience: ExperienceEntry[];
   education: EducationEntry;
   languages: LanguageProficiency[];
+  pdfUrl: string;
 }

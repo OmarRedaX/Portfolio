@@ -22,7 +22,7 @@ export const about: AboutContent = {
   },
   languages: [
     { name: "Arabic", level: "Native" },
-    { name: "English", level: "Fluent, professional working proficiency" },
+    { name: "English", level: "Fluent" },
     { name: "German", level: "B1" },
   ],
 };

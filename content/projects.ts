@@ -35,6 +35,10 @@ export const projects: Project[] = [
       "Signed payment webhooks",
       "Composite and partial indexes justified against query plans",
     ],
+    metrics: [
+      { label: "Requests / Day", value: "~54M" },
+      { label: "Sustained RPS", value: "~625" },
+    ],
     status:
       "In active development — containerization and end-to-end test coverage are being built out.",
     links: {

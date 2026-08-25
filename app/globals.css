@@ -114,7 +114,8 @@ body {
     @apply bg-transparent text-foreground border;
     border-color: var(--border);
   }
-  .btn-secondary:hover {
+  .btn-secondary:hover,
+  .btn-secondary.active {
     border-color: var(--accent);
     color: var(--accent);
   }
@@ -133,12 +134,15 @@ body {
     border-color: var(--accent);
   }
 
-  /* Nav links: text-only, underline/color transition on hover — no pills. */
+  /* Nav links: text-only, underline/color transition on hover — no pills.
+     .active mirrors :hover so the current section reads the same way whether
+     the user is pointing at it or scrolled into it (scrollspy sets .active). */
   .nav-link {
     @apply text-body text-foreground no-underline;
     transition: color var(--duration-fast) var(--ease-standard);
   }
-  .nav-link:hover {
+  .nav-link:hover,
+  .nav-link.active {
     color: var(--accent);
   }
 
@@ -155,6 +159,27 @@ body {
   }
 }
 
+/* Hero load-in (Phase 8) — plain CSS, not Framer Motion. The hero name is the page's LCP
+   element; a JS-driven (post-hydration) opacity animation would hold its "final" paint back
+   until React hydrates, which tanks LCP under throttled/mobile conditions. A CSS animation
+   starts as soon as the stylesheet is parsed, independent of hydration. Stagger is done with
+   per-element `animation-delay` (see Hero.tsx). */
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hero-in {
+  /* Deliberately slower than --duration-slow (the shared hover/interaction token) — this is a
+     one-time entrance, not a hover transition, so it can afford to read more. */
+  animation: hero-in 700ms var(--ease-standard) both;
+}
+
 /* Reduced motion: neutralize all transform/animation-based motion site-wide.
    Phase 8 builds the actual animations on top of this safe foundation. */
 @media (prefers-reduced-motion: reduce) {
@@ -165,5 +190,82 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Phase 4 — global shell additions on top of the Phase 2 tokens above. */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Off-screen until focused, so keyboard users can jump past the header nav. */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 100;
+  background: var(--foreground);
+  color: var(--background);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  transition: top var(--duration-fast) var(--ease-standard);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Status ticker (hero direction pass) — continuous marquee of short status/tech labels above
+   the header. Content is duplicated into two `.ticker-group`s and translated by exactly -50%
+   so the loop seams invisibly; the whole track is aria-hidden since a single sr-only string
+   carries the same information non-repeated for assistive tech (see StatusTicker.tsx). */
+.ticker {
+  overflow: hidden;
+  background: var(--surface);
+}
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 36s linear infinite;
+}
+.ticker-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2.5rem;
+  padding: 0.625rem 1.5rem;
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5rem;
+  white-space: nowrap;
+}
+.ticker-item::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+/* Deliberate, narrowly-scoped exception to the blanket reduced-motion freeze above: the
+   ticker's horizontal scroll is the component's entire content mechanism (a continuous status
+   strip), not decorative flourish, so it keeps running under reduced motion. Re-declaring the
+   full `animation` shorthand with `!important` is required — the blanket rule already set
+   animation-duration/animation-iteration-count to !important on every element, and this is the
+   only way to out-rank that on the properties it touches; `.ticker-track`'s class specificity
+   plus coming later in source order is what lets it win. Both `.ticker-group`s stay mounted
+   (never hidden) since the seamless loop depends on the exact duplicate. */
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: ticker-scroll 36s linear infinite !important;
   }
 }

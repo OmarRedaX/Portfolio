@@ -11,8 +11,10 @@ frontend → backend → full-stack progression, with the independently-built **
 microservices platform as the flagship proof point (case-study page). No CMS/DB/auth — this
 is a static, content-driven site.
 
-**Status:** Phases 1–3 (Content & Copy, Design System, Project Scaffold) are complete.
-Phases 4–12 have not started. Full roadmap and acceptance criteria: `implementation-plan.md`.
+**Status:** Phases 1–11 are complete — content, design tokens, the full app (layout/nav,
+homepage sections, Quick Bite case study, resume page, animation pass, SEO/metadata,
+accessibility/responsive QA, final polish) are all built and pushed. Phase 12 (Deployment to
+Vercel) has not started. Full roadmap and acceptance criteria: `implementation-plan.md`.
 
 ## Source of Truth & Precedence
 
@@ -43,14 +45,19 @@ typed local files (`content/`), not a backend.
 
 ## Architecture & Folder Structure
 
-- `app/` — Next.js App Router. `page.tsx`/`layout.tsx` are still the Phase 3 scaffold
-  placeholder (see Roadmap) — the real homepage sections, `/work/quick-bite`, `/resume`,
-  `app/sitemap.ts`, and `app/robots.ts` are built in later phases.
+- `app/` — Next.js App Router. `page.tsx`/`layout.tsx` render the real homepage/shell; `/work/quick-bite`
+  (case study), `/resume`, `app/sitemap.ts`, `app/robots.ts`, `app/api/contact` (contact-form route
+  handler), `app/not-found.tsx` (404), and the generated `icon.tsx`/`apple-icon.tsx`/`opengraph-image.tsx`/
+  `twitter-image.tsx` icons are all built.
   `app/dev/style-guide` is the internal, `noindex`'d design-token reference from Phase 2 —
   never link it from site navigation.
-- `components/` — reusable UI, reskinned shadcn primitives (empty until Phase 4/5)
+- `components/` — reusable UI: `layout/` (Header, Footer, ThemeToggle, StatusTicker, Container),
+  `sections/` (Hero, About, TechStack, Projects, Experience, Contact, ContactForm), `case-study/`
+  (architecture/event-flow diagrams, MetricStat, ScrollProgress), `motion/` (Reveal, StaggerReveal), `ui/`.
 - `content/` — typed data + MDX (Phase 1 output, see below)
-- `lib/` — utilities, e.g. contact-form email sending (empty until Phase 5)
+- `lib/` — utilities: `site.ts` (site URL/name), `metadata.ts` (per-route Metadata builder),
+  `email.ts`, `send-contact-email.ts` (Resend), `schemas/contact.ts` (Zod), `og-card.tsx`
+  (shared OG/Twitter/favicon visual).
 
 ## Content Layer (`content/`) — Phase 1 deliverable, present now
 
@@ -158,11 +165,11 @@ introducing a new runner.
 
 ## Git Conventions
 
-Repo is initialized on branch `main` with an initial commit; `origin` points to
-`https://github.com/OmarRedaX/Portfolio.git`. **Not yet pushed** — that needs explicit
-confirmation each time (visible action on a real external account), not just an
-already-approved plan. Descriptive, conventional commit messages; never force-push or skip
-hooks without an explicit request.
+Repo is on branch `main`; `origin` points to `https://github.com/OmarRedaX/Portfolio.git` and
+is pushed and up to date through Phase 11. Any further push still needs explicit confirmation
+each time (visible action on a real external account), not just an already-approved plan.
+Descriptive, conventional commit messages; never force-push or skip hooks without an explicit
+request.
 
 ## Commands
 
@@ -176,17 +183,16 @@ hooks without an explicit request.
 
 1. Content & Copy — **done**
 2. Design System (tokens) — **done** — `app/globals.css`, `/dev/style-guide`
-3. Project Scaffold (Next.js app, repo init/push) — **done**, except the push (see Git
-   Conventions above)
-4. Core Layout & Navigation
-5. Section Implementation (homepage)
-6. Quick Bite Case Study page
-7. Resume Page + PDF
-8. Animation & Interaction Pass
-9. SEO & Performance
-10. Accessibility & Responsive QA
-11. Final Polish
-12. Deployment
+3. Project Scaffold (Next.js app, repo init/push) — **done**
+4. Core Layout & Navigation — **done** — `components/layout/`
+5. Section Implementation (homepage) — **done** — `components/sections/`
+6. Quick Bite Case Study page — **done** — `app/work/quick-bite/`, `components/case-study/`
+7. Resume Page + PDF — **done** — `app/resume/`
+8. Animation & Interaction Pass — **done** — `components/motion/`, scroll-progress, reduced-motion
+9. SEO & Performance — **done** — per-route metadata, generated OG/Twitter/favicon images, sitemap/robots
+10. Accessibility & Responsive QA — **done** — contrast audit, 44px touch targets, keyboard/breakpoint QA
+11. Final Polish — **done** — `app/not-found.tsx`, generated favicon, verified production build
+12. Deployment — not started (next up)
 
 Work strictly in phase order unless the user explicitly says otherwise.
 
