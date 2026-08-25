@@ -11,8 +11,8 @@ frontend → backend → full-stack progression, with the independently-built **
 microservices platform as the flagship proof point (case-study page). No CMS/DB/auth — this
 is a static, content-driven site.
 
-**Status:** Phase 1 (Content & Copy Finalization) is complete. Phases 2–12 have not started.
-Full roadmap and acceptance criteria: `implementation-plan.md`.
+**Status:** Phases 1–3 (Content & Copy, Design System, Project Scaffold) are complete.
+Phases 4–12 have not started. Full roadmap and acceptance criteria: `implementation-plan.md`.
 
 ## Source of Truth & Precedence
 
@@ -26,8 +26,10 @@ Full roadmap and acceptance criteria: `implementation-plan.md`.
 5. `.claude/settings.json` — enabled plugins (`ui-ux-pro-max`, `taste-skill`, `github`) for
    design and PR work in later phases.
 
-No other CLAUDE.md, README, or design guide exists in this repo. When Phase 3 scaffolds the
-Next.js app, any new README should link back here rather than duplicate or override it.
+No other hand-authored CLAUDE.md or design guide exists in this repo (the
+`<!-- BEGIN:nextjs-agent-rules -->` block appended at the bottom of this file is auto-managed
+by `next dev` itself — see the note at the end of this file, leave it in place). `README.md`
+is intentionally minimal and links back here rather than duplicating it.
 
 ## Tech Stack (locked — implementation-plan.md §2)
 
@@ -39,13 +41,16 @@ contact form, `next/font` (self-hosted, no font CDN), native `app/sitemap.ts` + 
 **Explicitly excluded:** CMS, database, authentication, admin dashboard. Content lives in
 typed local files (`content/`), not a backend.
 
-## Architecture & Folder Structure (planned — Phase 3 stands this up)
+## Architecture & Folder Structure
 
-- `app/` — routes: `/` (hero, about, tech-stack, projects, experience, contact as sections),
-  `/work/quick-bite` (case study), `/resume`, `app/sitemap.ts`, `app/robots.ts`
-- `components/` — reusable UI, reskinned shadcn primitives
-- `content/` — typed data + MDX (**exists now** — Phase 1 output, see below)
-- `lib/` — utilities (e.g. contact-form email sending)
+- `app/` — Next.js App Router. `page.tsx`/`layout.tsx` are still the Phase 3 scaffold
+  placeholder (see Roadmap) — the real homepage sections, `/work/quick-bite`, `/resume`,
+  `app/sitemap.ts`, and `app/robots.ts` are built in later phases.
+  `app/dev/style-guide` is the internal, `noindex`'d design-token reference from Phase 2 —
+  never link it from site navigation.
+- `components/` — reusable UI, reskinned shadcn primitives (empty until Phase 4/5)
+- `content/` — typed data + MDX (Phase 1 output, see below)
+- `lib/` — utilities, e.g. contact-form email sending (empty until Phase 5)
 
 ## Content Layer (`content/`) — Phase 1 deliverable, present now
 
@@ -68,7 +73,7 @@ Rules for this layer:
   target**, not measured production traffic — copy must preserve that framing, never imply
   live production load.
 
-## Coding Conventions (apply once Phase 3+ introduces code)
+## Coding Conventions
 
 - TypeScript everywhere, strict types, no `any`. Content modules export named `const`s, never
   default exports.
@@ -77,15 +82,35 @@ Rules for this layer:
   all multi-word file names (routes, components, content modules — e.g. `tech-stack.ts`).
 - No comments explaining *what* code does — only *why*, and only when genuinely non-obvious.
 
-## Design Direction (locked)
+## Design Direction & Tokens (Phase 2 — implemented in `app/globals.css`)
 
 - 80% Premium/Editorial-Minimal base, 20% Technical/Blueprint accents — accents are for
   metrics, tech labels, and architecture framing **only**, never decorative.
-- Dark default, light toggle. Off-black/off-white + one accent color, dark/light token pairs.
-  One mono/technical face for technical labels; an editorial type scale otherwise.
+- Palette: warm off-black/off-white ("ink on paper," not a cold near-black) plus one
+  restrained accent — a desaturated cyanotype blue standing in for blueprint/drafting ink.
+  Deliberately not the generic "near-black + neon accent" dev-portfolio look. All bg/fg pairs
+  are contrast-checked ≥5.3:1. Dark is the default theme (`:root`); add class `light` to an
+  ancestor element to opt into the light theme (Phase 4 wires up the real toggle with
+  persistence + anti-flash handling — don't rebuild the palette to do that).
+- Type: **Fraunces** (display serif, restrained use — H1–H3, hero name) + **Archivo** (body
+  sans) + **IBM Plex Mono** (technical accent — tags, metric callouts, labels only). Loaded
+  via `next/font/google` in `app/layout.tsx` (self-hosted, no font CDN). Type scale is
+  `text-display/h1/h2/h3/body-lg/body/small/mono`, each bundling a paired line-height.
+- Radii: `--radius-sm` (2px, tags — sharp/drafting-precise) / `--radius-md` (4px, buttons) /
+  `--radius-lg` (8px, cards — slightly softer, editorial warmth).
+- Motion tokens: `--duration-fast/base/slow` (150/250/400ms) on `--ease-standard` (a calm
+  ease-out-quint, no bounce/elastic). A global `prefers-reduced-motion: reduce` rule already
+  neutralizes all transition/animation durations — Phase 8 builds real animations on top of
+  this, it does not need to add the reduced-motion handling itself.
+- Spacing: Tailwind's default 4px-base scale is the project's spacing scale (not reinvented);
+  `--space-section` is the one semantic addition, for consistent rhythm between major sections.
+- Component-spec CSS classes (not React components yet): `.btn` + `.btn-primary` /
+  `.btn-secondary`, `.card`, `.nav-link`, `.tag` (mono, uppercase, bracket-wrapped via
+  `::before`/`::after` — content data stays plain text, brackets are presentational only).
+  Phase 4/5 apply these class names on real components rather than restyling from scratch.
 - No photo anywhere — typographic/monogram/abstract identity only.
-- Once Phase 2 lands design tokens, they are the only source of color/spacing/type — no
-  hardcoded values outside the token set.
+- These tokens are the only source of color/spacing/type/motion from here on — no hardcoded
+  values outside the token set. See `/dev/style-guide` for a live, both-themes reference.
 
 ## Animation Rules (Phase 8 — reference now so nothing built earlier conflicts with it)
 
@@ -111,9 +136,10 @@ Best Practices, and Accessibility.
 
 ## Testing
 
-No test suite exists yet — Phase 1 produced content only, nothing executable. Once Phase 3+
-introduces code: Jest & Supertest are the established tools (per the CV) for anything that
-needs tests, e.g. the contact-form route handler — prefer them over introducing a new runner.
+No test suite exists yet — nothing built so far needs one (typed content, tokens, and a
+placeholder scaffold page). Once Phase 5+ adds real logic (e.g. the contact-form route
+handler): Jest & Supertest are the established tools (per the CV) — prefer them over
+introducing a new runner.
 
 ## Don't-Do Rules
 
@@ -132,21 +158,26 @@ needs tests, e.g. the contact-form route handler — prefer them over introducin
 
 ## Git Conventions
 
-This directory is not yet a git repository — Phase 3 runs `git init`, the first commit, and
-connects to `https://github.com/OmarRedaX/Portfolio.git`. Once initialized: descriptive,
-conventional commit messages; never force-push or skip hooks without an explicit request.
+Repo is initialized on branch `main` with an initial commit; `origin` points to
+`https://github.com/OmarRedaX/Portfolio.git`. **Not yet pushed** — that needs explicit
+confirmation each time (visible action on a real external account), not just an
+already-approved plan. Descriptive, conventional commit messages; never force-push or skip
+hooks without an explicit request.
 
 ## Commands
 
-Not available yet — Phase 3 scaffolds the Next.js app and adds `npm run dev` / `npm run lint`
-/ `npm run build`. Until then there is no build/lint/test pipeline; Phase 1 is validated by
-content review only (see implementation report for this phase).
+- `npm run dev` — dev server (Turbopack)
+- `npm run build` / `npm run start` — production build / serve
+- `npm run lint` — ESLint (flat config, `eslint-config-next` + `eslint-config-prettier`)
+- `npm run format` / `npm run format:check` — Prettier (markdown is intentionally excluded —
+  `implementation-plan.md` in particular should not be reformatted)
 
 ## Roadmap (full detail in `implementation-plan.md`)
 
 1. Content & Copy — **done**
-2. Design System (tokens)
-3. Project Scaffold (Next.js app, repo init/push)
+2. Design System (tokens) — **done** — `app/globals.css`, `/dev/style-guide`
+3. Project Scaffold (Next.js app, repo init/push) — **done**, except the push (see Git
+   Conventions above)
 4. Core Layout & Navigation
 5. Section Implementation (homepage)
 6. Quick Bite Case Study page
