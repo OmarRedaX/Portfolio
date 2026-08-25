@@ -1,0 +1,103 @@
+---
+title: "Quick Bite — Food Ordering & Delivery Platform"
+description: "An independently designed, event-driven microservices platform for food ordering and delivery."
+period: "2025 – 2026"
+stack: ["Node.js", "TypeScript", "Go", "PostgreSQL", "MongoDB", "Redis", "RabbitMQ", "Socket.IO"]
+repos:
+  core: "https://github.com/OmarRedaX/Quick-bite-Core-service"
+  order: "https://github.com/OmarRedaX/Quick-bite-Order-service"
+  analytics: "https://github.com/OmarRedaX/Quick-Bite-analytics-service"
+  overview: "https://github.com/OmarRedaX/Quick-Bite"
+status: "in-active-development"
+---
+
+## Overview
+
+Quick Bite is an independently designed food ordering and delivery platform, built to prove
+out full-stack, systems-level engineering beyond typical CRUD apps: a 3-service, event-driven
+microservices architecture — Core, Order, and Analytics — each owning its own database and
+talking to the others through internal HTTP APIs and asynchronous RabbitMQ events. The system
+was capacity-planned for roughly **54M requests a day (~625 RPS sustained)**.
+
+## Core
+
+The Core service owns identity, the restaurant/menu catalog, and access control.
+Authentication is centralized JWT, with restaurant-level role-based access control (RBAC)
+gating who can manage a given restaurant's catalog and orders.
+
+## Order
+
+The Order service owns orders, payments, and delivery. It sits under the heaviest write and
+consistency pressure in the system, which drove most of the platform's scaling and
+correctness decisions:
+
+- PostgreSQL sharded by region, behind a per-request connection router, to scale writes
+  horizontally.
+- Redis read-through caching to remove repeated synchronous lookups to the Core service.
+- Real-time delivery tracking over Socket.IO, with Redis geospatial queries for agent
+  matching.
+- Signed payment webhooks, so payment-provider callbacks are verified before they touch order
+  state.
+
+## Analytics
+
+The Analytics service is written in Go and owns its own store, consuming order and platform
+events asynchronously off RabbitMQ rather than querying Order or Core directly — keeping
+analytics workloads off the transactional path entirely.
+
+## Architecture
+
+Three services, three databases, one event backbone. Core and Order expose internal HTTP APIs
+to each other for synchronous needs (auth checks, catalog lookups) and publish to RabbitMQ for
+everything that doesn't need an immediate answer — order-state changes, delivery events,
+analytics events. Analytics only ever consumes; it never sits in the request path of a
+customer-facing action.
+
+<!-- Architecture diagram(s): built in Phase 6 from the facts on this page — not a placeholder for missing content, a forward reference to that phase's deliverable. -->
+
+## Engineering Decisions
+
+A few decisions did most of the work:
+
+- **Sharding over a single primary.** Order's write volume was the projected bottleneck, so
+  its PostgreSQL was sharded by region behind a per-request router rather than scaled
+  vertically.
+- **Transactional outbox over dual writes.** Order-state changes and their RabbitMQ events are
+  written in the same transaction via an outbox table, so a crash between "commit the order"
+  and "publish the event" can't happen.
+- **Idempotency keys + DLQ over at-least-once and hope.** Consumers are idempotent and backed
+  by dead-letter queues, so retried or redelivered events settle to the same state instead of
+  double-applying.
+- **Redis pub/sub for Socket.IO fanout.** Real-time delivery updates need to reach a client
+  regardless of which worker process holds its socket, so Socket.IO is backed by a Redis
+  pub/sub adapter instead of assuming a single process.
+
+## Scaling
+
+The platform was capacity-planned, not just built and hoped: ~54M requests/day (~625 RPS
+sustained) was the target the architecture was sized against. Getting there meant regional
+sharding on Order, Redis caching to cut cross-service chatter, and a pub/sub-backed real-time
+layer that scales horizontally with worker count instead of being pinned to one process.
+
+## Correctness
+
+Scale is only useful if the numbers stay right under concurrency:
+
+- `SELECT FOR UPDATE` on balance and payout settlement, so two concurrent settlement attempts
+  can't both succeed and double-pay.
+- Idempotency keys on order and payment mutations, so retries are safe.
+- A transactional outbox plus DLQ-backed consumers, so events are delivered and processed
+  exactly once in effect, even under redelivery.
+- Composite and partial indexes chosen and justified against actual query plans, not added
+  speculatively.
+
+## Results
+
+Quick Bite is a capacity-planned architecture — the ~54M requests/day and ~625 RPS figures are
+the design target the system was sized and sharded against, not measured production traffic
+from live users. What it demonstrates is the ability to reason about a system end to end:
+schema and sharding strategy, event-driven consistency, real-time fanout, and where
+correctness has to be enforced at the database level rather than assumed in application code.
+
+**Status:** Core, Order, and Analytics are functionally complete. Containerization (Docker
+Compose across all three services) and end-to-end test coverage are in active development.

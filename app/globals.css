@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/*
+  Design tokens — Phase 2.
+
+  Palette: warm off-black / off-white ("ink on paper"), not the cold near-black
+  used by most dev portfolios — paired with one restrained accent: a desaturated
+  cyanotype blue that reads as blueprint/drafting ink. The accent is reserved for
+  metrics, tech labels, and architecture framing (the 20% Technical/Blueprint
+  layer) — never decorative. Dark is the default theme; add class="light" to the
+  <html> element to opt into the light theme (Phase 4 wires up the actual toggle).
+  All bg/fg pairs below are verified >= 5.3:1 contrast (see implementation notes).
+*/
+:root {
+  --background: #0e0c0a;
+  --surface: #17140f;
+  --border: #2a241c;
+  --foreground: #f2ede4;
+  --foreground-muted: #a99e8d;
+  --accent: #6fa8c7;
+  --accent-strong: #8fc0da;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+
+  /* Generous, consistent vertical rhythm between major sections. */
+  --space-section: clamp(4rem, 10vw, 8rem);
+}
+
+.light {
+  --background: #f5f1e8;
+  --surface: #eae3d4;
+  --border: #d9cfbb;
+  --foreground: #17140f;
+  --foreground-muted: #6b6152;
+  --accent: #245a78;
+  --accent-strong: #123c52;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-plex-mono);
+
+  /* Editorial type scale: one dramatic display size, a restrained body scale,
+     and a small mono size for technical labels/metrics. */
+  --text-display: clamp(2.75rem, 6vw, 5.5rem);
+  --text-display--line-height: 1.05;
+  --text-h1: clamp(2rem, 4vw, 3.25rem);
+  --text-h1--line-height: 1.1;
+  --text-h2: clamp(1.5rem, 3vw, 2.25rem);
+  --text-h2--line-height: 1.15;
+  --text-h3: 1.5rem;
+  --text-h3--line-height: 1.3;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.6;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.5;
+  --text-mono: 0.8125rem;
+  --text-mono--line-height: 1.4;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/*
+  Component specs (Phase 2). These are token-driven CSS classes, not React
+  components — Phase 4/5 build the real Header/Nav/Button/Card/Tag components
+  and apply these class names rather than restyling from scratch.
+*/
+@layer components {
+  /* Buttons: editorial base, small radius (not pill-shaped) so they read as
+     precise rather than "friendly SaaS." Label stays in the body face — the
+     mono/accent treatment is reserved for tags and metrics. */
+  /* .btn is the shared base — pair it with .btn-primary or .btn-secondary
+     (Tailwind v4 can't @apply a custom class, only utilities, so the variants
+     can't extend .btn via @apply; both classes go on the element instead). */
+  .btn {
+    @apply inline-flex items-center justify-center px-6 py-3 text-body rounded-[var(--radius-md)] transition-colors;
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-standard);
+  }
+  .btn-primary {
+    @apply bg-foreground text-background;
+  }
+  .btn-primary:hover {
+    background: var(--accent-strong);
+    color: var(--background);
+  }
+  .btn-secondary {
+    @apply bg-transparent text-foreground border;
+    border-color: var(--border);
+  }
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Cards: slightly softer radius than buttons/tags — editorial warmth for
+     content containers. Hover lift + accent border, no heavy shadow. */
+  .card {
+    @apply bg-surface border rounded-[var(--radius-lg)] p-8;
+    border-color: var(--border);
+    transition:
+      transform var(--duration-base) var(--ease-standard),
+      border-color var(--duration-base) var(--ease-standard);
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+  }
+
+  /* Nav links: text-only, underline/color transition on hover — no pills. */
+  .nav-link {
+    @apply text-body text-foreground no-underline;
+    transition: color var(--duration-fast) var(--ease-standard);
+  }
+  .nav-link:hover {
+    color: var(--accent);
+  }
+
+  /* Tags/labels: the technical accent. Mono face, uppercase, bracket motif —
+     reads as an architectural/blueprint annotation, not a generic pill badge. */
+  .tag {
+    @apply font-mono text-mono uppercase tracking-widest text-accent;
+  }
+  .tag::before {
+    content: "[ ";
+  }
+  .tag::after {
+    content: " ]";
+  }
+}
+
+/* Reduced motion: neutralize all transform/animation-based motion site-wide.
+   Phase 8 builds the actual animations on top of this safe foundation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

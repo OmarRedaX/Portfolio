@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
+    "github@claude-plugins-official": true,
+    "taste-skill@taste-skill": true
+  }
+}
