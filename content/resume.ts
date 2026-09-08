@@ -103,5 +103,5 @@ export const resume: ResumeContent = {
   experience,
   education: about.education,
   languages: about.languages,
-  pdfUrl: "https://drive.google.com/file/d/1cRvaXZTMb6kpUinZYYkQiYPtxKKuXg8L/view?usp=sharing",
+  pdfUrl: "https://drive.google.com/file/d/1v6M5fXy3oOVa7dsP4Ak3W9AYVMw5b70A/view?usp=sharing",
 };
