@@ -12,3 +12,24 @@ export type World = { version: number; surfaces: Surface[]; connections: Connect
 export type Validation = { ok: true; world: World; minUsableHeight: number } | { ok: false; reason: 'viewport' | 'layout' };
 export type PauseReason = 'browsing' | 'focus' | 'native-control' | 'menu' | 'layout';
 export type ScrollOwner = 'follow' | 'destination' | 'resume' | 'recovery' | 'spawn';
+export type Phase = 'off' | 'confirming' | 'playing' | 'paused' | 'repositioning';
+export type SessionState = {
+  phase: Phase;
+  reasons: PauseReason[];
+  checkpoint: string | null;
+  operation: number;
+  layoutValid: boolean;
+  reposition: ScrollOwner | null;
+};
+export type SessionEvent =
+  | { type: 'OPEN' }
+  | { type: 'CONTINUE' }
+  | { type: 'EXIT' }
+  | { type: 'PAUSE'; reason: PauseReason }
+  | { type: 'CLEAR_REASON'; reason: PauseReason }
+  | { type: 'VALIDATED'; valid: boolean }
+  | { type: 'RESUME' }
+  | { type: 'REPOSITION'; owner: ScrollOwner }
+  | { type: 'SETTLED'; operation: number }
+  | { type: 'CHECKPOINT'; id: string };
+export type SessionEffect = 'clear-input' | 'clear-velocity' | 'validate' | 'reposition' | 'dispose';
