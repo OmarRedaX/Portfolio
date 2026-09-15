@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   observeGeometry,
+  readGeometry,
   signalRevealGeometry,
   toDocumentRect,
 } from "../../lib/game/geometry";
@@ -13,6 +14,88 @@ test("document rectangles retain their document position after scrolling", () =>
   );
 
   assert.deepEqual(rect, { x: 40, y: 720, width: 120, height: 32 });
+});
+
+test("moving supports remain planned while hidden and moving actions cannot activate", () => {
+  const previous = {
+    window: globalThis.window,
+    document: globalThis.document,
+    getComputedStyle: globalThis.getComputedStyle,
+  };
+  const section = {
+    dataset: { gameSection: "hero" },
+    parentElement: null,
+    classList: { contains: () => false },
+    hasAttribute: () => false,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 768, height: 900 }),
+    querySelector: () => null,
+  };
+  const reveal = {
+    dataset: { gameRevealState: "moving" },
+    parentElement: section,
+    classList: { contains: () => false },
+    hasAttribute: (name: string) => name === "data-game-reveal-state",
+  };
+  function item(
+    dataset: Record<string, string>,
+    parentElement: object,
+    left: number,
+    hidden = false,
+  ) {
+    return {
+      dataset,
+      parentElement,
+      isConnected: true,
+      classList: { contains: () => false },
+      hasAttribute: (name: string) => name === "hidden" && hidden,
+      getAttribute: () => null,
+      getClientRects: () => [{}],
+      getBoundingClientRect: () => ({ left, top: 100, width: 80, height: 40 }),
+      closest: (selector: string) =>
+        selector === "[data-game-section]"
+          ? section
+          : selector === "[data-game-reveal-state]"
+            ? parentElement === reveal
+              ? reveal
+              : null
+            : selector.includes("[hidden]")
+              ? hidden
+                ? {}
+                : null
+              : null,
+      textContent: "Existing link",
+    };
+  }
+  const movingSurface = item({ gameSurface: "moving-top" }, reveal, 32);
+  const movingTarget = item({ gameTarget: "moving-action" }, reveal, 32);
+  const hiddenTarget = item({ gameTarget: "hidden-action" }, section, 128, true);
+  const root = {
+    querySelectorAll: (selector: string) =>
+      selector === "[data-game-section]"
+        ? [section]
+        : [movingSurface, movingTarget, hiddenTarget],
+  } as unknown as HTMLElement;
+  Object.assign(globalThis, {
+    window: { scrollX: 0, scrollY: 0, innerHeight: 900 },
+    document: { querySelector: () => null },
+    getComputedStyle: () => ({
+      display: "block",
+      visibility: "visible",
+      transform: "none",
+    }),
+  });
+  try {
+    const snapshot = readGeometry(root);
+    assert.equal(snapshot.plannedSurfaces.length, 1);
+    assert.equal(snapshot.surfaces.length, 0);
+    assert.equal(snapshot.revealsSettled, false);
+    assert.deepEqual(
+      snapshot.targets.map((target) => target.enabled),
+      [false, false],
+    );
+  } finally {
+    Object.assign(globalThis, previous);
+  }
 });
 
 test("reveal signals notify geometry only during an active game", () => {
