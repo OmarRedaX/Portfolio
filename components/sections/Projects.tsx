@@ -12,24 +12,35 @@ export function Projects() {
   return (
     <section
       id="projects"
+      data-game-section="projects"
       className="border-t py-[var(--space-section)]"
       style={{ borderColor: "var(--border)" }}
     >
       <Container className="flex flex-col gap-10">
         <Reveal>
-          <SectionHeading eyebrow="Work" title="Featured Projects" id="projects-heading" />
+          <div data-game-checkpoint>
+            <SectionHeading
+              eyebrow="Work"
+              title="Featured Projects"
+              id="projects-heading"
+            />
+          </div>
         </Reveal>
 
         <div className="flex flex-col gap-8">
           {featured && (
             <Reveal>
-              <ProjectCard project={featured} size="large" />
+              <div data-game-surface={`project-${featured.slug}-top`}>
+                <ProjectCard project={featured} size="large" />
+              </div>
             </Reveal>
           )}
           <StaggerContainer className="grid gap-8 sm:grid-cols-2">
             {secondary.map((project) => (
               <StaggerItem key={project.slug} className="h-full">
-                <ProjectCard project={project} size="small" />
+                <div data-game-surface={`project-${project.slug}-top`} className="h-full">
+                  <ProjectCard project={project} size="small" />
+                </div>
               </StaggerItem>
             ))}
           </StaggerContainer>

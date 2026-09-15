@@ -1,7 +1,8 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { motion, type Transition } from "framer-motion";
+import { signalRevealGeometry } from "@/lib/game/geometry";
 
 const EASE_STANDARD: Transition["ease"] = [0.22, 1, 0.36, 1];
 
@@ -19,8 +20,11 @@ export function StaggerContainer({
   className?: string;
   staggerDelay?: number;
 }) {
+  const host = useRef<HTMLDivElement>(null);
   return (
     <motion.div
+      ref={host}
+      data-game-reveal-state="pending"
       className={className}
       initial="hidden"
       whileInView="visible"
@@ -28,6 +32,12 @@ export function StaggerContainer({
       variants={{
         hidden: {},
         visible: { transition: { staggerChildren: staggerDelay } },
+      }}
+      onViewportEnter={() => {
+        if (host.current) signalRevealGeometry(host.current, "moving");
+      }}
+      onAnimationComplete={() => {
+        if (host.current) signalRevealGeometry(host.current, "settled");
       }}
     >
       {children}
@@ -46,8 +56,11 @@ export function StaggerItem({
   style?: CSSProperties;
   y?: number;
 }) {
+  const host = useRef<HTMLDivElement>(null);
   return (
     <motion.div
+      ref={host}
+      data-game-reveal-state="pending"
       className={className}
       style={style}
       variants={{
@@ -57,6 +70,12 @@ export function StaggerItem({
           y: 0,
           transition: { duration: 0.5, ease: EASE_STANDARD },
         },
+      }}
+      onAnimationStart={() => {
+        if (host.current) signalRevealGeometry(host.current, "moving");
+      }}
+      onAnimationComplete={() => {
+        if (host.current) signalRevealGeometry(host.current, "settled");
       }}
     >
       {children}

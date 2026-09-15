@@ -21,9 +21,13 @@ export function ProjectCard({
   const linkEntries = Object.entries(project.links) as [keyof ProjectLinks, string][];
 
   return (
-    <article className={`card flex h-full flex-col gap-5 ${size === "large" ? "lg:p-10" : ""}`}>
+    <article
+      className={`card flex h-full flex-col gap-5 ${size === "large" ? "lg:p-10" : ""}`}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className={size === "large" ? "font-display text-h2" : "font-display text-h3"}>
+        <h3
+          className={size === "large" ? "font-display text-h2" : "font-display text-h3"}
+        >
           {project.name}
         </h3>
         <span className="text-small text-foreground-muted">{project.period}</span>
@@ -52,15 +56,24 @@ export function ProjectCard({
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-4 pt-2">
+      <div
+        data-game-action-row={`project-${project.slug}-actions`}
+        className="flex flex-wrap gap-4 pt-2"
+      >
         {linkEntries.map(([key, href]) =>
           key === "caseStudy" ? (
-            <Link key={key} href={href} className="btn btn-primary">
+            <Link
+              key={key}
+              data-game-target={`${project.slug}-${key}`}
+              href={href}
+              className="btn btn-primary"
+            >
               {linkLabels[key]}
             </Link>
           ) : (
             <a
               key={key}
+              data-game-target={`${project.slug}-${key}`}
               href={href}
               target="_blank"
               rel="noopener noreferrer"

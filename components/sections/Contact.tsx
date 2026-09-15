@@ -9,15 +9,21 @@ export function Contact() {
   return (
     <section
       id="contact"
+      data-game-section="contact"
       className="border-t py-[var(--space-section)]"
       style={{ borderColor: "var(--border)" }}
     >
       <Container className="grid gap-12 lg:grid-cols-[1fr_1.2fr]">
         <Reveal className="flex flex-col gap-6">
           <SectionHeading eyebrow="Contact" title="Contact" id="contact-heading" />
-          <div className="flex flex-col gap-2 text-body-lg">
+          <div
+            data-game-checkpoint
+            data-game-action-row="contact-actions"
+            className="flex flex-col gap-2 text-body-lg"
+          >
             <a
               href={gmailComposeUrl(contact.email)}
+              data-game-target="contact-email"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-link w-fit"
@@ -26,6 +32,7 @@ export function Contact() {
             </a>
             <a
               href={contact.linkedin}
+              data-game-target="contact-linkedin"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-link w-fit"
@@ -34,6 +41,7 @@ export function Contact() {
             </a>
             <a
               href={contact.github}
+              data-game-target="contact-github"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-link w-fit"
@@ -45,7 +53,9 @@ export function Contact() {
         </Reveal>
 
         <Reveal delay={0.08}>
-          <ContactForm />
+          <div data-game-obstacle="content">
+            <ContactForm />
+          </div>
         </Reveal>
       </Container>
     </section>
