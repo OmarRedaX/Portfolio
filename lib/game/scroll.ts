@@ -59,11 +59,24 @@ export function createScrollCoordinator(
   let owner: ScrollOwner | null = null;
   let ownerStartY = 0;
   let active: ActiveScroll | null = null;
+  let follow: FollowOwnership | null = null;
   let unownedFrame = 0;
   let manualNotified = false;
 
   const onScroll = () => {
     const scrollY = environment.window.scrollY;
+    if (owner === "follow" && follow) {
+      if (Math.abs(scrollY - follow.expectedY) < 1) {
+        cancelFollow();
+        return;
+      }
+      if (isOwnedOffset(scrollY, follow.startY, follow.expectedY)) {
+        follow.lastY = scrollY;
+        follow.stableFrames = 0;
+      }
+      scheduleFollowCheck();
+      return;
+    }
     if (owner !== null && active && isOwnedOffset(scrollY, ownerStartY, expectedY)) {
       active.lastY = scrollY;
       active.stableFrames = 0;
@@ -120,10 +133,22 @@ export function createScrollCoordinator(
       ownerStartY = currentY;
       expectedY = destinationY;
       environment.window.scrollBy(0, adjustment);
+      if (owner === "follow") {
+        follow = {
+          startY: currentY,
+          expectedY: destinationY,
+          lastY: environment.window.scrollY,
+          stableFrames: 0,
+          frames: 0,
+          animationFrame: 0,
+        };
+        scheduleFollowCheck();
+      }
     },
     reposition(nextOwner, destinationY, signal) {
       if (disposed || signal.aborted) return Promise.resolve(false);
       cancelActive(false);
+      cancelFollow();
       manualNotified = false;
 
       const currentY = environment.window.scrollY;
@@ -137,6 +162,7 @@ export function createScrollCoordinator(
     observeNavigation(signal) {
       if (disposed || signal.aborted) return Promise.resolve(false);
       cancelActive(false);
+      cancelFollow();
       manualNotified = false;
       owner = "destination";
       expectedY = null;
@@ -146,6 +172,7 @@ export function createScrollCoordinator(
       if (disposed) return;
       disposed = true;
       cancelActive(false);
+      cancelFollow();
       environment.window.removeEventListener("scroll", onScroll);
       environment.window.removeEventListener("scrollend", onScrollEnd);
       environment.window.removeEventListener("wheel", onManualInput);
@@ -196,7 +223,7 @@ export function createScrollCoordinator(
         const reachedTarget = targetY === null || Math.abs(scrollY - targetY) < 1;
         if (
           reachedTarget &&
-          hasNavigationTarget(kind) &&
+          navigationIsSettled(kind) &&
           operation.sawScrollEnd &&
           operation.stableFrames >= 2
         ) {
@@ -227,6 +254,7 @@ export function createScrollCoordinator(
   function notifyManual() {
     if (disposed) return;
     cancelActive(false);
+    cancelFollow();
     expectedY = null;
     owner = null;
     if (manualNotified) return;
@@ -244,12 +272,52 @@ export function createScrollCoordinator(
     });
   }
 
-  function hasNavigationTarget(kind: ActiveScroll["kind"]): boolean {
+  function scheduleFollowCheck() {
+    const ownership = follow;
+    if (!ownership) return;
+    environment.cancelAnimationFrame(ownership.animationFrame);
+    ownership.animationFrame = environment.requestAnimationFrame(() => {
+      if (disposed || follow !== ownership || owner !== "follow") return;
+      const scrollY = environment.window.scrollY;
+      if (Math.abs(scrollY - ownership.expectedY) < 1) {
+        cancelFollow();
+        return;
+      }
+      ownership.stableFrames =
+        Math.abs(scrollY - ownership.lastY) < 1 ? ownership.stableFrames + 1 : 0;
+      ownership.lastY = scrollY;
+      ownership.frames++;
+      const validProgress = isOwnedOffset(scrollY, ownership.startY, ownership.expectedY);
+      if ((!validProgress && ownership.stableFrames >= 1) || ownership.frames >= 8) {
+        cancelFollow();
+        notifyManual();
+        return;
+      }
+      scheduleFollowCheck();
+    });
+  }
+
+  function cancelFollow() {
+    if (!follow) return;
+    environment.cancelAnimationFrame(follow.animationFrame);
+    follow = null;
+    if (owner === "follow") {
+      expectedY = null;
+      owner = null;
+    }
+  }
+
+  function navigationIsSettled(kind: ActiveScroll["kind"]): boolean {
     if (kind !== "navigation") return true;
     const hash = environment.window.location?.hash ?? "";
     if (!hash) return true;
     try {
-      return environment.document.querySelector?.(hash) !== null;
+      const target = environment.document.querySelector?.(hash);
+      if (!target) return false;
+      const reveal = target.closest<HTMLElement>("[data-game-reveal-state]");
+      if (reveal?.dataset.gameRevealState !== undefined && reveal.dataset.gameRevealState !== "settled")
+        return false;
+      return target.querySelector("[data-game-reveal-state]:not([data-game-reveal-state='settled'])") === null;
     } catch {
       return false;
     }
@@ -279,6 +347,15 @@ type ActiveScroll = {
   timeout: number;
   abort: () => void;
   signal?: AbortSignal;
+};
+
+type FollowOwnership = {
+  startY: number;
+  expectedY: number;
+  lastY: number;
+  stableFrames: number;
+  frames: number;
+  animationFrame: number;
 };
 
 function isOwnedOffset(scrollY: number, startY: number, expectedY: number | null): boolean {

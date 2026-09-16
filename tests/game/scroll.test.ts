@@ -33,6 +33,7 @@ class FakeBrowser extends FakeEvents {
   target: Element | null = null;
   readonly scrollByCalls: number[] = [];
   readonly scrollToCalls: number[] = [];
+  scrollByEffect: ((top: number) => void) | null = null;
   private readonly frames = new Map<number, FrameRequestCallback>();
   private readonly timers = new Map<number, () => void>();
   private nextHandle = 1;
@@ -44,6 +45,10 @@ class FakeBrowser extends FakeEvents {
 
   scrollBy(_left: number, top: number) {
     this.scrollByCalls.push(top);
+    if (this.scrollByEffect) {
+      this.scrollByEffect(top);
+      return;
+    }
     this.scrollY = Math.max(0, Math.min(1_200, this.scrollY + top));
     this.emit("scroll");
   }
@@ -160,14 +165,32 @@ test("manual wheel input cancels an owned reposition before it can settle", asyn
   assert.equal(await result, false);
 });
 
-test("wheel, scrollbar movement, and PageDown pause ordinary browsing", () => {
+test("wheel input pauses ordinary browsing", () => {
   const browser = new FakeBrowser();
   let manualPauses = 0;
   coordinator(browser, () => manualPauses++);
 
   browser.emit("wheel");
+
+  assert.equal(manualPauses, 1);
+});
+
+test("stable scrollbar movement pauses ordinary browsing", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  coordinator(browser, () => manualPauses++);
+
   browser.setScrollY(120);
   browser.frame();
+
+  assert.equal(manualPauses, 1);
+});
+
+test("PageDown pauses ordinary browsing when game keys do not own it", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  coordinator(browser, () => manualPauses++);
+
   browser.document.emit("keydown", { key: "PageDown", defaultPrevented: false });
 
   assert.equal(manualPauses, 1);
@@ -203,7 +226,7 @@ test("dispose resolves pending work as failed and ignores stale scroll callbacks
 test("navigation observes an already-current hash without issuing a competing scroll", async () => {
   const browser = new FakeBrowser();
   browser.location.hash = "#about";
-  browser.target = {} as Element;
+  browser.target = { closest: () => null, querySelector: () => null } as unknown as Element;
   const scroll = coordinator(browser);
   const result = scroll.observeNavigation(new AbortController().signal);
 
@@ -213,6 +236,71 @@ test("navigation observes an already-current hash without issuing a competing sc
 
   assert.deepEqual(browser.scrollToCalls, []);
   assert.equal(await result, true);
+});
+
+test("navigation waits for moving destination geometry to settle before stable frames count", async () => {
+  const browser = new FakeBrowser();
+  browser.location.hash = "#about";
+  let revealState = "moving";
+  browser.target = {
+    closest: () => ({ dataset: { gameRevealState: revealState } }),
+    querySelector: () => null,
+  } as unknown as Element;
+  const scroll = coordinator(browser);
+  const result = scroll.observeNavigation(new AbortController().signal);
+
+  browser.document.emit("portfolio:geometry-change");
+  browser.frame();
+  browser.frame();
+  browser.frame();
+
+  assert.equal(await Promise.race([result, Promise.resolve("pending")]), "pending");
+  revealState = "settled";
+  browser.document.emit("portfolio:geometry-change");
+  browser.frame();
+  browser.frame();
+
+  assert.equal(await result, true);
+});
+
+test("delayed follow arrival remains owned until it reaches the expected offset", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  browser.scrollByEffect = () => {};
+  const scroll = coordinator(browser, () => manualPauses++);
+
+  scroll.follow(80);
+  browser.frame();
+  browser.frame();
+  browser.frame();
+  browser.setScrollY(80);
+  browser.frame();
+
+  assert.equal(manualPauses, 0);
+});
+
+test("a stable short follow result relinquishes ownership and pauses browsing", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  browser.scrollByEffect = () => browser.setScrollY(40);
+  const scroll = coordinator(browser, () => manualPauses++);
+
+  scroll.follow(80);
+  for (let frame = 0; frame < 8; frame++) browser.frame();
+
+  assert.equal(manualPauses, 1);
+});
+
+test("a stable out-of-range follow result relinquishes ownership and pauses browsing", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  browser.scrollByEffect = () => browser.setScrollY(160);
+  const scroll = coordinator(browser, () => manualPauses++);
+
+  scroll.follow(80);
+  browser.frame();
+
+  assert.equal(manualPauses, 1);
 });
 
 test("reposition falls back to stable frames when scrollend is unavailable", async () => {
