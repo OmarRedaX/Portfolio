@@ -129,12 +129,17 @@ export function createScrollCoordinator(
       const adjustment = destinationY - currentY;
       if (adjustment === 0) return;
 
-      owner = "follow";
-      ownerStartY = currentY;
+      const ongoing = owner === "follow" ? follow : null;
+      if (ongoing) {
+        ongoing.expectedY = destinationY;
+      } else {
+        owner = "follow";
+        ownerStartY = currentY;
+      }
       expectedY = destinationY;
       environment.window.scrollBy(0, adjustment);
       if (owner === "follow") {
-        follow = {
+        follow ??= {
           startY: currentY,
           expectedY: destinationY,
           lastY: environment.window.scrollY,

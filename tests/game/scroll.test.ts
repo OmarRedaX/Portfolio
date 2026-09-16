@@ -291,6 +291,20 @@ test("a stable short follow result relinquishes ownership and pauses browsing", 
   assert.equal(manualPauses, 1);
 });
 
+test("repeated follow calls with no scroll progress still reach the ownership deadline", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  browser.scrollByEffect = () => {};
+  const scroll = coordinator(browser, () => manualPauses++);
+
+  for (let frame = 0; frame < 8; frame++) {
+    scroll.follow(80);
+    browser.frame();
+  }
+
+  assert.equal(manualPauses, 1);
+});
+
 test("a stable out-of-range follow result relinquishes ownership and pauses browsing", () => {
   const browser = new FakeBrowser();
   let manualPauses = 0;
