@@ -57,7 +57,10 @@ export type World = {
   surfaces: Surface[];
   connections: Connection[];
   checkpoints: Record<SectionId, string>;
+  actionLedges: Record<string, string>;
+  targetLedges: Record<string, string>;
   obstacles: Rect[];
+  envelope: Rect[];
 };
 export type Validation =
   | { ok: true; world: World; minUsableHeight: number }

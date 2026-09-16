@@ -1,0 +1,473 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { buildWorld, outsidePlayablePath } from "../../lib/game/world";
+import { spawn, step } from "../../lib/game/physics";
+import {
+  sectionIds,
+  type GeometrySnapshot,
+  type Rect,
+  type Tuning,
+} from "../../lib/game/model";
+
+const tuning: Tuning = {
+  step: 1 / 120,
+  speed: 240,
+  gravity: 1100,
+  jumpSpeed: 580,
+  bodyWidth: 24,
+  bodyHeight: 32,
+  landingMargin: 2,
+  reachX: 110,
+  reachY: 150,
+};
+const box = (x: number, y: number, width: number, height: number): Rect => ({
+  x,
+  y,
+  width,
+  height,
+});
+
+function fixture(gap = 760): GeometrySnapshot {
+  const sectionBounds = Object.fromEntries(
+    sectionIds.map((id, i) => [id, box(0, i * gap, 753, gap)]),
+  ) as GeometrySnapshot["sectionBounds"];
+  const sectionAnchors = Object.fromEntries(
+    sectionIds.map((id, i) => [id, box(32, i * gap + 80, 689, 58)]),
+  ) as GeometrySnapshot["sectionAnchors"];
+  return {
+    surfaces: [],
+    plannedSurfaces: [],
+    targets: [],
+    elements: new Map(),
+    sectionBounds,
+    sectionAnchors,
+    obstacles: [],
+    actionRows: [],
+    plannedActionRows: [],
+    headerBottom: 84,
+    revealsSettled: true,
+  };
+}
+
+test("wide two-section route has simulated witnesses in both directions or fails closed", () => {
+  const snapshot = fixture(1000);
+  snapshot.obstacles.push(box(0, 450, 753, 90));
+  const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 1);
+  if (!result.ok) {
+    assert.equal(result.reason, "layout");
+    return;
+  }
+  for (const connection of result.world.connections) {
+    const start = result.world.surfaces.find(
+      (surface) => surface.id === connection.from,
+    )!;
+    let body = spawn(start, tuning);
+    for (const input of connection.frames)
+      body = step(body, input, result.world.surfaces, tuning).body;
+    assert.equal(body.groundedOn, connection.to);
+    assert.ok(
+      result.world.connections.some(
+        (edge) => edge.from === connection.to && edge.to === connection.from,
+      ),
+    );
+  }
+});
+
+test("clear layout produces six checkpoints and repeatable, bidirectional witnesses", () => {
+  const snapshot = fixture();
+  const a = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 4);
+  const b = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 4);
+  assert.ok(a.ok && b.ok);
+  assert.deepEqual(a, b);
+  assert.equal(Object.keys(a.world.checkpoints).length, 6);
+  for (const connection of a.world.connections) {
+    const start = a.world.surfaces.find((surface) => surface.id === connection.from)!;
+    let body = spawn(start, tuning);
+    for (const input of connection.frames)
+      body = step(body, input, a.world.surfaces, tuning).body;
+    assert.equal(body.groundedOn, connection.to);
+    assert.ok(
+      a.world.connections.some(
+        (edge) => edge.from === connection.to && edge.to === connection.from,
+      ),
+    );
+  }
+});
+
+test("unsupported width and insufficient usable height reject the route", () => {
+  assert.deepEqual(buildWorld(fixture(), tuning, { width: 767, usableHeight: 700 }, 1), {
+    ok: false,
+    reason: "viewport",
+  });
+  assert.deepEqual(buildWorld(fixture(), tuning, { width: 768, usableHeight: 120 }, 1), {
+    ok: false,
+    reason: "viewport",
+  });
+});
+
+test("blocked narrow gutters fail rather than placing helpers over readable content", () => {
+  const snapshot = fixture();
+  snapshot.obstacles.push(box(0, 0, 753, 4500));
+  assert.deepEqual(buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 1), {
+    ok: false,
+    reason: "layout",
+  });
+});
+
+test("route recovery permits an ordinary fall toward lower ledges but detects sideways escape", () => {
+  const result = buildWorld(fixture(), tuning, { width: 768, usableHeight: 700 }, 1);
+  assert.ok(result.ok);
+  const ledge = result.world.surfaces[2];
+  const falling = {
+    ...spawn(ledge, tuning),
+    x: ledge.x + 40,
+    y: ledge.y + 18,
+    groundedOn: null,
+    vy: 200,
+  };
+  assert.equal(outsidePlayablePath(falling, result.world), false);
+  assert.equal(outsidePlayablePath({ ...falling, x: 300 }, result.world), true);
+});
+
+test("measured 768px homepage has a playable checkpoint and action route", () => {
+  const snapshot = fixture();
+  const anchorY = [624.25, 1039.58, 1860.3, 3380.48, 5111.8, 5919.45];
+  const anchorH = [67.59, 57.78, 57.78, 57.78, 57.78, 129.58];
+  for (let i = 0; i < sectionIds.length; i++)
+    snapshot.sectionAnchors[sectionIds[i]] = box(32, anchorY[i], 689, anchorH[i]);
+  snapshot.obstacles = [
+    box(32, 381.7, 209, 18),
+    box(32, 423.9, 689, 48),
+    box(32, 496.3, 672, 29),
+    box(32, 549.1, 672, 51),
+    box(32, 1137.4, 689, 394),
+    box(58, 5207.6, 663, 191),
+    box(58, 5438.7, 663, 242),
+    box(32, 6097, 689, 474),
+  ];
+  const rows: Array<[string, number, number, number, number]> = [
+    ["hero-actions", 32, 624.25, 689, 67.59],
+    ["project-quick-bite-actions", 65, 4252.53, 623, 99.19],
+    ["project-social-media-actions", 65, 4860.42, 262.5, 33.59],
+    ["project-fresh-cart-actions", 425.5, 4886.61, 262.5, 33.59],
+    ["contact-actions", 32, 5919.45, 689, 129.58],
+  ];
+  snapshot.plannedActionRows = rows.map(([id, x, y, w, h]) => ({
+    id,
+    section: id.startsWith("hero")
+      ? "hero"
+      : id.startsWith("contact")
+        ? "contact"
+        : "projects",
+    rect: box(x, y, w, h),
+  }));
+  const links: Array<[string, number, number, number, number]> = [
+    ["hero-projects", 32, 640.3, 122.4, 51.6],
+    ["hero-resume", 170.4, 640.3, 109.9, 51.6],
+    ["hero-contact", 296.3, 640.3, 106.3, 51.6],
+    ["quick-bite-core", 65, 4260.5, 109.6, 25.6],
+    ["quick-bite-order", 190.6, 4260.5, 115.5, 25.6],
+    ["quick-bite-analytics", 322.2, 4260.5, 140.1, 25.6],
+    ["quick-bite-overview", 478.2, 4260.5, 84.7, 25.6],
+    ["quick-bite-caseStudy", 65, 4302.1, 130.3, 49.6],
+    ["social-media-repo", 65, 4868.4, 95.5, 25.6],
+    ["fresh-cart-repo", 425.5, 4894.6, 95.5, 25.6],
+    ["contact-email", 32, 5919.5, 194.8, 25.6],
+    ["contact-linkedin", 32, 5953, 60, 25.6],
+    ["contact-github", 32, 5986.6, 50.9, 25.6],
+  ];
+  snapshot.targets = links.map(([id, x, y, w, h], order) => ({
+    id,
+    label: id,
+    order,
+    rect: box(x, y, w, h),
+    enabled: true,
+  }));
+  const registered: Array<[string, "tech-stack" | "projects", number, number, number]> = [
+    ["stack-frontend-top", "tech-stack", 32, 1954.1, 332.5],
+    ["stack-backend-top", "tech-stack", 388.5, 1954.1, 332.5],
+    ["stack-databases-data-top", "tech-stack", 32, 2290.6, 332.5],
+    ["stack-system-design-architecture-top", "tech-stack", 32, 2645.3, 689],
+    ["stack-cloud-tooling-top", "tech-stack", 32, 2951.6, 332.5],
+    ["project-quick-bite-top", "projects", 32, 3478.3, 689],
+    ["project-social-media-top", "projects", 32, 4412.7, 328.5],
+    ["project-fresh-cart-top", "projects", 392.5, 4412.7, 328.5],
+  ];
+  snapshot.plannedSurfaces = registered.map(([id, section, x, y, width]) => ({
+    id,
+    section,
+    x,
+    y,
+    width,
+    checkpoint: false,
+  }));
+  const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 720 }, 1);
+  assert.ok(result.ok, JSON.stringify(result));
+  assert.equal(Object.keys(result.world.actionLedges).length, 5);
+  const fresh = result.world.surfaces.find(
+    (surface) => surface.id === result.world.actionLedges["project-fresh-cart-actions"],
+  );
+  assert.ok(fresh);
+  assert.ok(fresh.x + fresh.width >= 425.5 - tuning.reachX);
+  for (const connection of result.world.connections) {
+    const start = result.world.surfaces.find(
+      (surface) => surface.id === connection.from,
+    )!;
+    let body = spawn(start, tuning);
+    for (const input of connection.frames)
+      body = step(body, input, result.world.surfaces, tuning).body;
+    assert.equal(body.groundedOn, connection.to);
+    assert.ok(
+      connection.corridor.every((rect) => rect.x >= 0 && rect.x + rect.width <= 768),
+    );
+  }
+});
+
+test("measured 1440px homepage retains a witnessed route", () => {
+  const snapshot = fixture();
+  const y = [645.42, 1090.78, 1977.91, 3276.05, 4905.42, 5791.89];
+  const h = [67.59, 71.58, 71.58, 71.58, 71.58, 129.58];
+  for (let i = 0; i < sectionIds.length; i++)
+    snapshot.sectionAnchors[sectionIds[i]] = box(
+      184.5,
+      y[i],
+      i === 5 ? 458.17 : 1056,
+      h[i],
+    );
+  snapshot.obstacles = [
+    box(184.5, 360.53, 209, 18),
+    box(184.5, 402.72, 896, 91),
+    box(184.5, 517.44, 672, 29),
+    box(184.5, 570.23, 672, 51),
+    box(184.5, 1202.36, 768, 365),
+    box(210.5, 5015, 1030, 191),
+    box(210.5, 5246.16, 1030, 191),
+    box(690.67, 5696.31, 549.83, 474),
+  ];
+  snapshot.plannedActionRows = [
+    { id: "hero-actions", section: "hero", rect: box(184.5, 645.42, 1056, 67.59) },
+    {
+      id: "project-quick-bite-actions",
+      section: "projects",
+      rect: box(225.5, 4080.31, 974, 57.59),
+    },
+    {
+      id: "project-social-media-actions",
+      section: "projects",
+      rect: box(217.5, 4526.05, 446, 33.59),
+    },
+    {
+      id: "project-fresh-cart-actions",
+      section: "projects",
+      rect: box(761.5, 4577.83, 446, 33.59),
+    },
+    {
+      id: "contact-actions",
+      section: "contact",
+      rect: box(184.5, 5791.89, 458.17, 129.58),
+    },
+  ];
+  const result = buildWorld(snapshot, tuning, { width: 1440, usableHeight: 720 }, 2);
+  assert.ok(result.ok, JSON.stringify(result));
+  assert.equal(Object.keys(result.world.actionLedges).length, 5);
+});
+
+test("measured 1024px homepage retains a witnessed route", () => {
+  const snapshot = fixture();
+  const y = [632.31, 1065.17, 1895, 3256.59, 4848.78, 5671.88];
+  const h = [67.59, 65.5, 65.5, 65.5, 65.5, 129.58];
+  for (let i = 0; i < sectionIds.length; i++)
+    snapshot.sectionAnchors[sectionIds[i]] = box(48, y[i], i === 5 ? 393.17 : 913, h[i]);
+  snapshot.obstacles = [
+    box(48, 373.64, 209, 18),
+    box(48, 415.83, 896, 65),
+    box(48, 504.33, 672, 29),
+    box(48, 557.13, 672, 51),
+    box(48, 1170.67, 768, 365),
+    box(74, 4952.28, 887, 191),
+    box(74, 5183.44, 887, 191),
+    box(489.17, 5582.38, 471.83, 474),
+  ];
+  snapshot.plannedActionRows = [
+    { id: "hero-actions", section: "hero", rect: box(48, 632.31, 913, 67.59) },
+    {
+      id: "project-quick-bite-actions",
+      section: "projects",
+      rect: box(89, 4074.89, 831, 57.59),
+    },
+    {
+      id: "project-social-media-actions",
+      section: "projects",
+      rect: box(81, 4572.41, 374.5, 33.59),
+    },
+    {
+      id: "project-fresh-cart-actions",
+      section: "projects",
+      rect: box(553.5, 4572.41, 374.5, 33.59),
+    },
+    { id: "contact-actions", section: "contact", rect: box(48, 5671.88, 393.17, 129.58) },
+  ];
+  const links: Array<[string, number, number, number, number]> = [
+    ["hero-projects", 48, 648.3, 122.4, 51.6],
+    ["hero-resume", 186.4, 648.3, 109.9, 51.6],
+    ["hero-contact", 312.3, 648.3, 106.3, 51.6],
+    ["quick-bite-core", 89, 4082.9, 109.6, 49.6],
+    ["quick-bite-order", 214.6, 4082.9, 115.5, 49.6],
+    ["quick-bite-analytics", 346.2, 4082.9, 140.1, 49.6],
+    ["quick-bite-overview", 502.2, 4082.9, 84.7, 49.6],
+    ["quick-bite-caseStudy", 602.9, 4082.9, 130.3, 49.6],
+    ["social-media-repo", 81, 4580.4, 95.5, 25.6],
+    ["fresh-cart-repo", 553.5, 4580.4, 95.5, 25.6],
+    ["contact-email", 48, 5671.9, 194.8, 25.6],
+    ["contact-linkedin", 48, 5705.5, 60, 25.6],
+    ["contact-github", 48, 5739.1, 50.9, 25.6],
+  ];
+  snapshot.targets = links.map(([id, x, y, w, h], order) => ({
+    id,
+    label: id,
+    order,
+    rect: box(x, y, w, h),
+    enabled: true,
+  }));
+  const supports: Array<[string, "tech-stack" | "projects", number, number, number]> = [
+    ["stack-frontend-top", "tech-stack", 48, 1996.5, 444.5],
+    ["stack-backend-top", "tech-stack", 516.5, 1996.5, 444.5],
+    ["stack-databases-data-top", "tech-stack", 48, 2272.6, 444.5],
+    ["stack-system-design-architecture-top", "tech-stack", 48, 2548.8, 913],
+    ["stack-cloud-tooling-top", "tech-stack", 48, 2824.9, 444.5],
+    ["project-quick-bite-top", "projects", 48, 3362.1, 913],
+    ["project-social-media-top", "projects", 48, 4201.5, 440.5],
+    ["project-fresh-cart-top", "projects", 520.5, 4201.5, 440.5],
+  ];
+  snapshot.plannedSurfaces = supports.map(([id, section, x, y, width]) => ({
+    id,
+    section,
+    x,
+    y,
+    width,
+    checkpoint: false,
+  }));
+  const result = buildWorld(snapshot, tuning, { width: 1024, usableHeight: 720 }, 3);
+  assert.ok(result.ok, JSON.stringify(result));
+  assert.equal(Object.keys(result.world.actionLedges).length, 5);
+});
+
+test("both ends of a wide action row have reachable registered links", () => {
+  const snapshot = fixture();
+  const row = box(65, 2800, 623, 80);
+  snapshot.plannedActionRows = [{ id: "wide-actions", section: "projects", rect: row }];
+  snapshot.targets = [
+    {
+      id: "near-link",
+      label: "Near",
+      order: 0,
+      rect: box(65, 2820, 90, 30),
+      enabled: true,
+    },
+    {
+      id: "far-link",
+      label: "Far",
+      order: 1,
+      rect: box(590, 2820, 98, 30),
+      enabled: true,
+    },
+  ];
+  const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 8);
+  assert.ok(result.ok);
+  for (const target of snapshot.targets) {
+    const ledge = result.world.surfaces.find(
+      (surface) => surface.id === result.world.targetLedges[target.id],
+    );
+    assert.ok(ledge, target.id);
+    const body = spawn(ledge, tuning);
+    assert.ok(
+      Math.abs(body.x + body.width / 2 - target.rect.x - target.rect.width / 2) <=
+        tuning.reachX,
+    );
+    assert.ok(
+      Math.abs(body.y + body.height / 2 - target.rect.y - target.rect.height / 2) <=
+        tuning.reachY,
+    );
+    assert.ok(result.world.connections.some((edge) => edge.to === ledge.id));
+    assert.ok(result.world.connections.some((edge) => edge.from === ledge.id));
+  }
+});
+
+test("a lower platform outside horizontal overlap cannot prevent recovery", () => {
+  const result = buildWorld(fixture(), tuning, { width: 768, usableHeight: 700 }, 9);
+  assert.ok(result.ok);
+  const body = {
+    ...spawn(result.world.surfaces[0], tuning),
+    x: 220,
+    y: result.world.surfaces[0].y + 400,
+    vy: 200,
+    groundedOn: null,
+  };
+  result.world.surfaces.push({
+    id: "unrelated-lower",
+    section: "contact",
+    x: 300,
+    y: body.y + body.height + 100,
+    width: 32,
+    checkpoint: false,
+  });
+  assert.equal(outsidePlayablePath(body, result.world), true);
+  assert.equal(outsidePlayablePath({ ...body, x: 305 }, result.world), false);
+});
+
+test("a registered intervening top participates in full-world collision validation", () => {
+  const snapshot = fixture();
+  snapshot.plannedSurfaces.push({
+    id: "intervening-card",
+    section: "projects",
+    x: 0,
+    y: 2550,
+    width: 32,
+    checkpoint: false,
+  });
+  const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 10);
+  if (!result.ok) {
+    assert.equal(result.reason, "layout");
+    return;
+  }
+  assert.ok(result.world.surfaces.some((surface) => surface.id === "intervening-card"));
+  for (const connection of result.world.connections) {
+    const start = result.world.surfaces.find(
+      (surface) => surface.id === connection.from,
+    )!;
+    let body = spawn(start, tuning);
+    for (const input of connection.frames)
+      body = step(body, input, result.world.surfaces, tuning).body;
+    assert.equal(body.groundedOn, connection.to);
+  }
+});
+
+test("a repeated geometry version reuses its validation but a changed exclusion invalidates it", () => {
+  const snapshot = fixture();
+  const a = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 11);
+  const b = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 11);
+  assert.strictEqual(a, b);
+  snapshot.obstacles.push(box(0, 0, 753, 4500));
+  assert.deepEqual(buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 11), {
+    ok: false,
+    reason: "layout",
+  });
+});
+
+test("minimum usable height accepts its exact boundary and rejects one pixel below", () => {
+  const tall = buildWorld(fixture(), tuning, { width: 768, usableHeight: 700 }, 12);
+  assert.ok(tall.ok);
+  assert.ok(
+    buildWorld(fixture(), tuning, { width: 768, usableHeight: tall.minUsableHeight }, 12)
+      .ok,
+  );
+  assert.deepEqual(
+    buildWorld(
+      fixture(),
+      tuning,
+      { width: 768, usableHeight: tall.minUsableHeight - 1 },
+      12,
+    ),
+    { ok: false, reason: "viewport" },
+  );
+});
