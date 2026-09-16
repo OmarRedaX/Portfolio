@@ -83,6 +83,14 @@ class FakeBrowser extends FakeEvents {
     callbacks.forEach((callback) => callback(0));
   }
 
+  frameBefore(callback: () => void) {
+    const callbacks = [...this.frames.entries()];
+    callback();
+    callbacks.forEach(([handle, frame]) => {
+      if (this.frames.delete(handle)) frame(0);
+    });
+  }
+
   fireTimers() {
     const callbacks = [...this.timers.values()];
     this.timers.clear();
@@ -300,6 +308,20 @@ test("repeated follow calls with no scroll progress still reach the ownership de
   for (let frame = 0; frame < 8; frame++) {
     scroll.follow(80);
     browser.frame();
+  }
+
+  assert.equal(manualPauses, 1);
+});
+
+test("follow ownership checks survive game-loop-first callback ordering", () => {
+  const browser = new FakeBrowser();
+  let manualPauses = 0;
+  browser.scrollByEffect = () => {};
+  const scroll = coordinator(browser, () => manualPauses++);
+
+  scroll.follow(80);
+  for (let frame = 0; frame < 8; frame++) {
+    browser.frameBefore(() => scroll.follow(80));
   }
 
   assert.equal(manualPauses, 1);

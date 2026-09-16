@@ -145,7 +145,7 @@ export function createScrollCoordinator(
           lastY: environment.window.scrollY,
           stableFrames: 0,
           frames: 0,
-          animationFrame: 0,
+          animationFrame: null,
         };
         scheduleFollowCheck();
       }
@@ -280,8 +280,9 @@ export function createScrollCoordinator(
   function scheduleFollowCheck() {
     const ownership = follow;
     if (!ownership) return;
-    environment.cancelAnimationFrame(ownership.animationFrame);
+    if (ownership.animationFrame !== null) return;
     ownership.animationFrame = environment.requestAnimationFrame(() => {
+      ownership.animationFrame = null;
       if (disposed || follow !== ownership || owner !== "follow") return;
       const scrollY = environment.window.scrollY;
       if (Math.abs(scrollY - ownership.expectedY) < 1) {
@@ -304,7 +305,7 @@ export function createScrollCoordinator(
 
   function cancelFollow() {
     if (!follow) return;
-    environment.cancelAnimationFrame(follow.animationFrame);
+    if (follow.animationFrame !== null) environment.cancelAnimationFrame(follow.animationFrame);
     follow = null;
     if (owner === "follow") {
       expectedY = null;
@@ -360,7 +361,7 @@ type FollowOwnership = {
   lastY: number;
   stableFrames: number;
   frames: number;
-  animationFrame: number;
+  animationFrame: number | null;
 };
 
 function isOwnedOffset(scrollY: number, startY: number, expectedY: number | null): boolean {
