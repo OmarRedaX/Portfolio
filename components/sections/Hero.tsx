@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { hero } from "@/content";
 import { Container } from "@/components/layout/Container";
+import { GameEntry } from "@/components/game/game-entry";
 
 // Decorative, aria-hidden — the "20% Technical/Blueprint" accent layer standing
 // in for the deliberately-omitted photo (design tokens: typographic/abstract
@@ -104,6 +105,7 @@ export function Hero() {
               {cta.label}
             </Link>
           ))}
+          <GameEntry />
         </div>
       </Container>
     </section>

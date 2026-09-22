@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activateSelected, selectTarget } from "../../lib/game/interaction";
-import type { Body, GeometrySnapshot, TargetBox, Tuning } from "../../lib/game/model";
+import { activateSelected, classifyActivation, destinationLanding, selectTarget, withDestinationCheckpoint } from "../../lib/game/interaction";
+import type { Body, GeometrySnapshot, Surface, TargetBox, Tuning, World } from "../../lib/game/model";
 
 const tuning: Tuning = {
   step: 1 / 120,
@@ -201,4 +201,55 @@ test("activation rejects unpresented, stale, disconnected, and paused selections
     false,
   );
   assert.equal(clicks, 0);
+});
+
+test("activation prepares navigation ownership before the real synchronous click", () => {
+  const events: string[] = [];
+  const element = { isConnected: true, getClientRects: () => [{}], click: () => events.push("click") } as unknown as HTMLElement;
+  const snapshot = snapshotWith("work", element, [target("work", 0, bodyCenter.x, bodyCenter.y)]);
+  assert.equal(activateSelected("work", "work", groundedBody, snapshot, tuning, () => events.push("ownership")), true);
+  assert.deepEqual(events, ["ownership", "click"]);
+});
+
+test("ineligible activation never acquires navigation ownership", () => {
+  let preparations = 0;
+  const element = { isConnected: true, getClientRects: () => [{}], click: () => assert.fail("stale click") } as unknown as HTMLElement;
+  const snapshot = snapshotWith("work", element, [target("work", 0, bodyCenter.x, bodyCenter.y)]);
+  assert.equal(activateSelected("work", null, groundedBody, snapshot, tuning, () => preparations++), false);
+  assert.equal(preparations, 0);
+});
+
+test("classification preserves actual resolved destinations and new-tab behavior", () => {
+  const current = new URL("https://portfolio.test/#projects");
+  const anchor = (href: string, target = "", download = false) => ({ tagName: "A", href, target,
+    hasAttribute: (name: string) => name === "download" && download }) as unknown as HTMLElement;
+  for (const href of ["#projects", "https://portfolio.test/#contact"]) {
+    const result = classifyActivation(anchor(href), current);
+    assert.equal(result.kind, "destination");
+    if (result.kind === "destination") assert.equal(result.url.href, new URL(href, current).href);
+  }
+  for (const href of ["/resume", "/work/quick-bite", "/?view=other#contact"])
+    assert.equal(classifyActivation(anchor(href), current).kind, "page");
+  for (const element of [anchor("#contact", "_blank"), anchor("#contact", "named-tab"),
+    anchor("https://github.com/omar"), anchor("mailto:hello@example.com"), anchor("/resume", "", true)])
+    assert.equal(classifyActivation(element, current).kind, "native");
+});
+
+test("destination landing prefers its checkpoint and restricts fallback to clear helpers inside that section", () => {
+  const geometry = snapshotWith("unused", {} as HTMLElement, []);
+  geometry.sectionBounds.projects = { x: 0, y: 500, width: 800, height: 500 };
+  const checkpoint: Surface = { id: "projects-checkpoint", section: "projects", x: 30, y: 600, width: 60, checkpoint: true };
+  const helper: Surface = { ...checkpoint, id: "helper", x: 120, checkpoint: false };
+  const real: Surface = { ...checkpoint, id: "real", x: 200, checkpoint: false };
+  const outside: Surface = { ...helper, id: "outside", x: 790 };
+  const elsewhere: Surface = { ...helper, id: "elsewhere", section: "about" };
+  geometry.plannedSurfaces = [real];
+  const world = { surfaces: [elsewhere, outside, real, helper, checkpoint], checkpoints: { projects: checkpoint.id }, obstacles: [] } as unknown as World;
+  assert.equal(destinationLanding(world, geometry, "projects", tuning)?.id, checkpoint.id);
+  const blocked = { ...world, obstacles: [{ x: 30, y: 560, width: 60, height: 50 }] };
+  assert.equal(destinationLanding(blocked, geometry, "projects", tuning)?.id, helper.id);
+  assert.equal(destinationLanding({ ...blocked, surfaces: blocked.surfaces.filter(surface => surface.id !== helper.id) }, geometry, "projects", tuning), null);
+  const promoted = withDestinationCheckpoint(blocked, helper);
+  assert.equal(promoted.checkpoints.projects, helper.id);
+  assert.deepEqual(promoted.surfaces.filter(surface => surface.section === "projects" && surface.checkpoint).map(surface => surface.id), [helper.id]);
 });

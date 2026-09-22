@@ -1,6 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createSession, transition } from "../../lib/game/session";
+import { createSession, transition, restoreSupport, ownsGameKey } from "../../lib/game/session";
+
+test("gameplay keyboard rejects editable composed ancestors and prevented events", () => {
+  const host = {};
+  const control = { matches: () => true };
+  assert.equal(ownsGameKey(false, [host], host), true);
+  assert.equal(ownsGameKey(true, [host], host), false);
+  assert.equal(ownsGameKey(false, [host, control], host), false);
+  assert.equal(ownsGameKey(false, [control], host), false);
+});
+
+test("layout replacement preserves only safe support with relative horizontal position", () => {
+  const old = { id: "base", section: "hero" as const, x: 10, y: 100, width: 100, checkpoint: false };
+  const next = { ...old, x: 30, y: 140 };
+  const body = { x: 40, y: 68, width: 24, height: 32, vx: 2, vy: 0, groundedOn: "base" };
+  assert.deepEqual(restoreSupport(body, [old], [next], []), { ...body, x: 60, y: 108, vx: 0, vy: 0 });
+  assert.equal(restoreSupport(body, [old], [], []), null);
+  assert.equal(restoreSupport(body, [old], [next], [{ x: 60, y: 108, width: 24, height: 32 }]), null);
+  assert.equal(restoreSupport({ ...body, groundedOn: null }, [old], [next], []), null);
+});
 
 test("clearing focus pause never resumes", () => {
   const playing = {

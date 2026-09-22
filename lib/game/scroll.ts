@@ -32,7 +32,7 @@ export type ScrollCoordinator = {
     destinationY: number,
     signal: AbortSignal,
   ): Promise<boolean>;
-  observeNavigation(signal: AbortSignal): Promise<boolean>;
+  observeNavigation(signal: AbortSignal, arrived?: () => boolean): Promise<boolean>;
   dispose(): void;
 };
 
@@ -103,18 +103,25 @@ export function createScrollCoordinator(
     if (active?.kind === "navigation") active.stableFrames = 0;
   };
   const onManualInput = () => notifyManual();
+  const fromControls = (event: Event) => event.composedPath?.().some((node) =>
+    node && typeof node === "object" && "closest" in node &&
+    (node as Element).closest("[data-game-controls]"),
+  );
+  const onPointer = (event: Event) => {
+    if (!fromControls(event)) notifyManual();
+  };
   const onKeyDown = (event: Event) => {
     const keyEvent = event as KeyboardEvent;
     if (!keyEvent.defaultPrevented && browsingKeys.has(keyEvent.key)) notifyManual();
   };
   const onNativeControlClick = (event: Event) => {
-    if (event.isTrusted) notifyManual();
+    if (event.isTrusted && !fromControls(event)) notifyManual();
   };
   environment.window.addEventListener("scroll", onScroll);
   environment.window.addEventListener("scrollend", onScrollEnd);
   environment.window.addEventListener("wheel", onManualInput);
   environment.window.addEventListener("touchmove", onManualInput);
-  environment.window.addEventListener("pointerdown", onManualInput);
+  environment.window.addEventListener("pointerdown", onPointer);
   environment.document.addEventListener("keydown", onKeyDown);
   environment.document.addEventListener("click", onNativeControlClick);
   environment.window.addEventListener("hashchange", onNavigationChange);
@@ -164,14 +171,14 @@ export function createScrollCoordinator(
       environment.window.scrollTo(0, targetY);
       return waitForSettlement(targetY, signal, "reposition");
     },
-    observeNavigation(signal) {
+    observeNavigation(signal, arrived = () => true) {
       if (disposed || signal.aborted) return Promise.resolve(false);
       cancelActive(false);
       cancelFollow();
       manualNotified = false;
       owner = "destination";
       expectedY = null;
-      return waitForSettlement(null, signal, "navigation");
+      return waitForSettlement(null, signal, "navigation", arrived);
     },
     dispose() {
       if (disposed) return;
@@ -182,7 +189,7 @@ export function createScrollCoordinator(
       environment.window.removeEventListener("scrollend", onScrollEnd);
       environment.window.removeEventListener("wheel", onManualInput);
       environment.window.removeEventListener("touchmove", onManualInput);
-      environment.window.removeEventListener("pointerdown", onManualInput);
+      environment.window.removeEventListener("pointerdown", onPointer);
       environment.document.removeEventListener("keydown", onKeyDown);
       environment.document.removeEventListener("click", onNativeControlClick);
       environment.window.removeEventListener("hashchange", onNavigationChange);
@@ -195,6 +202,7 @@ export function createScrollCoordinator(
     targetY: number | null,
     signal: AbortSignal,
     kind: "reposition" | "navigation",
+    arrived: () => boolean = () => true,
   ): Promise<boolean> {
     return new Promise((resolve) => {
       const needsScrollEnd =
@@ -228,6 +236,7 @@ export function createScrollCoordinator(
         const reachedTarget = targetY === null || Math.abs(scrollY - targetY) < 1;
         if (
           reachedTarget &&
+          arrived() &&
           navigationIsSettled(kind) &&
           operation.sawScrollEnd &&
           operation.stableFrames >= 2
@@ -323,7 +332,11 @@ export function createScrollCoordinator(
       const reveal = target.closest<HTMLElement>("[data-game-reveal-state]");
       if (reveal?.dataset.gameRevealState !== undefined && reveal.dataset.gameRevealState !== "settled")
         return false;
-      return target.querySelector("[data-game-reveal-state]:not([data-game-reveal-state='settled'])") === null;
+      return !Array.from(target.querySelectorAll("[data-game-reveal-state]:not([data-game-reveal-state='settled'])"))
+        .some((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.bottom > 0 && rect.top < environment.window.innerHeight;
+        });
     } catch {
       return false;
     }
@@ -384,8 +397,8 @@ function browserEnvironment(): ScrollEnvironment {
   return {
     window,
     document,
-    requestAnimationFrame,
-    cancelAnimationFrame,
+    requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
+    cancelAnimationFrame: (handle) => window.cancelAnimationFrame(handle),
     setTimeout: (callback, ms) => window.setTimeout(callback, ms),
     clearTimeout: (handle) => window.clearTimeout(handle),
   };

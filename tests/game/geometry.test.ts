@@ -119,6 +119,9 @@ test("reveal signals notify geometry only during an active game", () => {
     signalRevealGeometry(host, "settled");
     assert.deepEqual(events, ["portfolio:geometry-change"]);
     assert.equal(host.dataset.gameRevealState, "settled");
+    signalRevealGeometry(host, "moving");
+    assert.equal(host.dataset.gameRevealState, "settled", "a once-only reveal must not become moving again on viewport re-entry");
+    assert.deepEqual(events, ["portfolio:geometry-change"]);
   } finally {
     Object.assign(globalThis, { document: previousDocument });
   }

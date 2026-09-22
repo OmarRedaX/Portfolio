@@ -1,4 +1,22 @@
-import type { PauseReason, SessionEffect, SessionEvent, SessionState } from "./model";
+import type { Body, Rect, Surface, PauseReason, SessionEffect, SessionEvent, SessionState } from "./model";
+
+export function ownsGameKey(defaultPrevented: boolean, path: readonly unknown[], host: unknown): boolean {
+  return !defaultPrevented && path.includes(host) && !path.some((node) => {
+    if (node === host || !node || typeof node !== "object" || !("matches" in node)) return false;
+    return (node as Element).matches('a, button, input, textarea, select, summary, [role="button"], [contenteditable]:not([contenteditable="false"])');
+  });
+}
+
+export function restoreSupport(body: Body, previous: readonly Surface[], next: readonly Surface[], obstacles: readonly Rect[]): Body | null {
+  const old = previous.find((surface) => surface.id === body.groundedOn);
+  const support = next.find((surface) => surface.id === body.groundedOn);
+  if (!old || !support) return null;
+  const x = support.x + body.x - old.x;
+  const candidate = { ...body, x, y: support.y - body.height, vx: 0, vy: 0 };
+  if (x < support.x || x + body.width > support.x + support.width) return null;
+  if (obstacles.some((rect) => candidate.x < rect.x + rect.width && candidate.x + candidate.width > rect.x && candidate.y < rect.y + rect.height && candidate.y + candidate.height > rect.y)) return null;
+  return candidate;
+}
 
 const resetEffects: SessionEffect[] = ["clear-input", "clear-velocity"];
 

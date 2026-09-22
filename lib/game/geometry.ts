@@ -201,6 +201,9 @@ export function signalRevealGeometry(
   state: "moving" | "settled",
 ): void {
   if (!host.querySelector(registeredSelector)) return;
+  // Portfolio reveals run once. Viewport re-entry can notify again without a
+  // second animation/completion; do not latch an already finished reveal moving.
+  if (state === "moving" && host.dataset.gameRevealState === "settled") return;
   host.dataset.gameRevealState = state;
   if (document.documentElement.dataset.gameMode === "active") {
     document.dispatchEvent(new Event(geometryEvent));

@@ -1,0 +1,235 @@
+.entry {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The session supplies document bounds measured without this layer. Clipping
+   contains every visual, including a falling avatar, without extending scroll. */
+.world {
+  --checkpoint-inactive: #f19b98;
+  --checkpoint-active: #7ace9e;
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: clip;
+  max-width: 100%;
+  contain: layout paint;
+  pointer-events: none;
+  z-index: 30;
+}
+
+:global(.light) .world {
+  --checkpoint-inactive: #a02c35;
+  --checkpoint-active: #17693b;
+}
+
+.platform {
+  position: absolute;
+  height: 3px;
+  background: var(--accent);
+}
+
+.flag {
+  position: absolute;
+  color: var(--checkpoint-inactive);
+}
+
+.flag[data-active="true"] {
+  color: var(--checkpoint-active);
+}
+.pole {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+.check {
+  fill: none;
+  stroke: var(--background);
+  stroke-width: 2;
+}
+
+.avatar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 32px;
+}
+
+/* Poses are discrete session-driven attributes, not CSS animations: OS motion
+   preferences cannot alter them, and pausing cancels all pose advancement. */
+.figure {
+  transform-origin: 12px 32px;
+}
+.hoodie {
+  fill: var(--accent);
+  stroke: var(--background);
+  stroke-width: 1;
+}
+.face {
+  fill: var(--foreground);
+}
+.eyes {
+  stroke: var(--background);
+  stroke-width: 1.5;
+}
+.legs {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform-origin: 12px 23px;
+}
+.seam {
+  fill: none;
+  stroke: var(--background);
+  stroke-width: 1;
+}
+.avatar[data-facing="left"] svg {
+  transform: scaleX(-1);
+}
+.avatar[data-pose="run-a"] .legs {
+  transform: skewX(18deg);
+}
+.avatar[data-pose="run-b"] .legs {
+  transform: skewX(-18deg);
+}
+.avatar[data-pose="rise"] .legs {
+  transform: translateY(-3px) rotate(-12deg);
+}
+.avatar[data-pose="fall"] .legs {
+  transform: rotate(12deg);
+}
+.avatar[data-pose="land"] .figure {
+  transform: scaleY(0.9);
+}
+
+.hud {
+  position: fixed;
+  inset-inline: 0;
+  z-index: 40;
+  overflow: auto;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+  pointer-events: auto;
+  font-size: 0.8125rem;
+}
+
+.controlRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.instructions {
+  flex: 1 1 18rem;
+  font-family: var(--font-mono);
+}
+.status {
+  color: var(--foreground-muted);
+  margin-top: 0.25rem;
+}
+.hint {
+  display: block;
+  min-height: 1.5em;
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+}
+.hud button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Outline does not change a link's layout, transform, or native hit area. */
+.selected {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 3px;
+}
+
+.keyboardRequired,
+.largerWindow {
+  display: none;
+}
+
+.feedback,
+.largerWindow {
+  color: var(--foreground-muted);
+  font-size: 0.875rem;
+}
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(30rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.dialog p {
+  margin-top: 1rem;
+  color: var(--foreground-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.preparation {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+@media not all and (any-pointer: fine) {
+  .entry:not([data-keyboard="true"]) .available {
+    display: none;
+  }
+
+  .entry:not([data-keyboard="true"]) .keyboardRequired {
+    display: inline;
+    color: var(--foreground-muted);
+  }
+}
+
+/* Width wins over the capability hint, including with an attached keyboard. */
+@media (width < 768px) {
+  .entry .trigger,
+  .entry .feedback {
+    display: none;
+  }
+
+  .largerWindow {
+    display: inline;
+    padding-block: 0.75rem;
+  }
+}

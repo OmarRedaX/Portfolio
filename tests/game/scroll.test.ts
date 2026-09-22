@@ -114,6 +114,34 @@ function coordinator(browser: FakeBrowser, onManual = () => {}) {
   });
 }
 
+test("default browser adapter preserves native animation receivers during teardown", () => {
+  const previous = { window: globalThis.window, document: globalThis.document,
+    requestAnimationFrame: globalThis.requestAnimationFrame, cancelAnimationFrame: globalThis.cancelAnimationFrame };
+  const browser = new FakeBrowser();
+  Object.assign(globalThis, { window: browser, document: browser.document,
+    requestAnimationFrame: browser.requestAnimationFrame, cancelAnimationFrame: browser.cancelAnimationFrame });
+  try {
+    const scroll = createScrollCoordinator(() => {});
+    scroll.follow(20);
+    assert.doesNotThrow(() => scroll.dispose());
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
+test("Resume HUD pointer and click do not interrupt their own reposition", () => {
+  const browser = new FakeBrowser();
+  let interruptions = 0;
+  const scroll = coordinator(browser, () => interruptions++);
+  const hudEvent = { isTrusted: true, composedPath: () => [{ closest: () => ({}) }] };
+  browser.emit("pointerdown", hudEvent);
+  browser.document.emit("click", hudEvent);
+  assert.equal(interruptions, 0);
+  browser.emit("wheel", hudEvent);
+  assert.equal(interruptions, 1, "wheel remains manual even over HUD");
+  scroll.dispose();
+});
+
 const body: Body = {
   x: 0,
   y: 500,
@@ -234,7 +262,7 @@ test("dispose resolves pending work as failed and ignores stale scroll callbacks
 test("navigation observes an already-current hash without issuing a competing scroll", async () => {
   const browser = new FakeBrowser();
   browser.location.hash = "#about";
-  browser.target = { closest: () => null, querySelector: () => null } as unknown as Element;
+  browser.target = { closest: () => null, querySelectorAll: () => [] } as unknown as Element;
   const scroll = coordinator(browser);
   const result = scroll.observeNavigation(new AbortController().signal);
 
@@ -252,7 +280,7 @@ test("navigation waits for moving destination geometry to settle before stable f
   let revealState = "moving";
   browser.target = {
     closest: () => ({ dataset: { gameRevealState: revealState } }),
-    querySelector: () => null,
+    querySelectorAll: () => [],
   } as unknown as Element;
   const scroll = coordinator(browser);
   const result = scroll.observeNavigation(new AbortController().signal);
@@ -269,6 +297,23 @@ test("navigation waits for moving destination geometry to settle before stable f
   browser.frame();
 
   assert.equal(await result, true);
+});
+
+test("offscreen destination reveals do not prevent arrival but visible moving reveals do", async () => {
+  const browser = new FakeBrowser();
+  browser.location.hash = "#projects";
+  let revealTop = 200;
+  browser.target = { closest: () => null, querySelectorAll: () => [
+    { getBoundingClientRect: () => ({ top: revealTop, bottom: revealTop + 100 }) },
+  ] } as unknown as Element;
+  const scroll = coordinator(browser);
+  const pending = scroll.observeNavigation(new AbortController().signal, () => true);
+  browser.frame(); browser.frame();
+  assert.equal(await Promise.race([pending, Promise.resolve("pending")]), "pending");
+  revealTop = 900;
+  browser.frame(); browser.frame();
+  assert.equal(await pending, true);
+  scroll.dispose();
 });
 
 test("delayed follow arrival remains owned until it reaches the expected offset", () => {
@@ -375,4 +420,42 @@ test("a settlement timeout reports failure rather than assuming the requested of
   browser.fireTimers();
 
   assert.equal(await result, false);
+});
+
+test("navigation cannot settle before observed destination arrival even at a stable current hash", async () => {
+  const browser = new FakeBrowser();
+  const scroll = coordinator(browser);
+  let arrived = false;
+  let result: boolean | undefined;
+  const pending = scroll.observeNavigation(new AbortController().signal, () => arrived).then(value => { result = value; });
+  browser.frame(); browser.frame();
+  await Promise.resolve();
+  assert.equal(result, undefined);
+  arrived = true;
+  browser.frame(); browser.frame();
+  await pending;
+  assert.equal(result, true);
+  scroll.dispose();
+});
+
+test("cancelled or no-op navigation times out without an arrival", async () => {
+  const browser = new FakeBrowser();
+  const scroll = coordinator(browser);
+  const pending = scroll.observeNavigation(new AbortController().signal, () => false);
+  browser.frame(); browser.frame(); browser.fireTimers();
+  assert.equal(await pending, false);
+  assert.deepEqual(browser.scrollToCalls, []);
+  scroll.dispose();
+});
+
+test("manual interruption wins over a destination arriving later", async () => {
+  const browser = new FakeBrowser();
+  let arrived = false;
+  const scroll = coordinator(browser);
+  const pending = scroll.observeNavigation(new AbortController().signal, () => arrived);
+  browser.emit("wheel");
+  arrived = true;
+  browser.frame(); browser.frame();
+  assert.equal(await pending, false);
+  scroll.dispose();
 });
