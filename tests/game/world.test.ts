@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildWorld, outsidePlayablePath } from "../../lib/game/world";
 import { spawn, step } from "../../lib/game/physics";
+import { createSession, transition } from "../../lib/game/session";
+import { settledProjects } from "./fixtures/rendered-projects";
 import {
   sectionIds,
   type GeometrySnapshot,
@@ -112,6 +114,71 @@ test("blocked narrow gutters fail rather than placing helpers over readable cont
     ok: false,
     reason: "layout",
   });
+});
+
+test("768px route clears content whose subpixel right edge exceeds its anchor", () => {
+  const snapshot = fixture();
+  // Chromium measured anchor right=720.7999878 and content right=720.8000145.
+  // Preserve that tiny difference in a minimal six-checkpoint layout.
+  snapshot.obstacles.push(box(32, 0, 689.00003, 4500));
+  const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 705 }, 1);
+  assert.ok(result.ok, "a clear right gutter must produce a validated route");
+  assert.equal(Object.keys(result.world.checkpoints).length, 6);
+  for (const connection of result.world.connections) {
+    let body = spawn(
+      result.world.surfaces.find((s) => s.id === connection.from)!,
+      tuning,
+    );
+    for (const input of connection.frames) {
+      body = step(body, input, result.world.surfaces, tuning).body;
+      assert.ok(body.x >= 721.00003 + 2, "witness must retain content clearance");
+    }
+    assert.equal(body.groundedOn, connection.to);
+  }
+});
+
+test("settled Projects action rows revalidate after browsing without auto-resuming", () => {
+  const snapshot = settledProjects();
+  const viewport = { width: 1440, usableHeight: 705 };
+  // Wheel browsing reveals the two lower cards after arrival at Projects.
+  const before = {
+    ...snapshot,
+    targets: snapshot.targets.map((target) => ({
+      ...target,
+      enabled:
+        target.enabled && !["social-media-repo", "fresh-cart-repo"].includes(target.id),
+    })),
+  };
+  assert.ok(buildWorld(before, tuning, viewport, 1).ok);
+  const state = {
+    ...createSession(),
+    phase: "playing" as const,
+    checkpoint: "checkpoint-projects",
+    layoutValid: true,
+  };
+  const paused = transition(state, { type: "PAUSE", reason: "browsing" }).state;
+  const moving = buildWorld({ ...snapshot, revealsSettled: false }, tuning, viewport, 2);
+  assert.deepEqual(moving, { ok: false, reason: "layout" });
+  const blocked = transition(paused, { type: "VALIDATED", valid: false }).state;
+  const settled = buildWorld(snapshot, tuning, viewport, 3);
+  assert.ok(settled.ok, "settled neighboring action rows must have a safe route");
+  assert.ok(settled.world.surfaces.some((surface) => surface.id === blocked.checkpoint));
+  const validated = transition(blocked, { type: "VALIDATED", valid: true }).state;
+  assert.equal(validated.phase, "paused");
+  assert.equal(validated.checkpoint, "checkpoint-projects");
+  assert.equal(validated.layoutValid, true);
+  assert.ok(!validated.reasons.includes("layout"));
+  const ready = transition(validated, { type: "CLEAR_REASON", reason: "browsing" }).state;
+  assert.equal(transition(ready, { type: "RESUME" }).state.phase, "repositioning");
+  for (const connection of settled.world.connections) {
+    let body = spawn(
+      settled.world.surfaces.find((surface) => surface.id === connection.from)!,
+      tuning,
+    );
+    for (const input of connection.frames)
+      body = step(body, input, settled.world.surfaces, tuning).body;
+    assert.equal(body.groundedOn, connection.to);
+  }
 });
 
 test("route recovery permits an ordinary fall toward lower ledges but detects sideways escape", () => {

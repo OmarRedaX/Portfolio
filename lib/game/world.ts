@@ -245,7 +245,16 @@ function safeLanes(
 ): Array<{ x: number; width: number }> {
   const anchors = sectionIds.map((id) => snapshot.sectionAnchors[id]);
   const left = Math.min(...anchors.map((anchor) => anchor.x));
-  const right = Math.max(...anchors.map((anchor) => anchor.x + anchor.width));
+  // Content/action edges can extend beyond an anchor, including by a subpixel
+  // after browser layout. Derive the gutter from every excluded right edge so
+  // the strict witness clearance does not depend on those edges rounding alike.
+  const right = Math.max(
+    ...[
+      ...anchors,
+      ...snapshot.obstacles,
+      ...snapshot.plannedActionRows.map((row) => row.rect),
+    ].map((rect) => rect.x + rect.width),
+  );
   const width = tuning.bodyWidth + 8;
   return [...new Set([64, 96, 48].map((gap) => left - Math.min(left, gap)).concat(right))]
     .map((x) => ({ x, width }))
@@ -345,7 +354,11 @@ function attempt(
                 (candidate) =>
                   candidate.section === row.section &&
                   candidate.rect.y >= row.rect.y &&
-                  candidate.rect.y <= branchY &&
+                  // Only share a terrace with rows that its avatar fully clears.
+                  // A lower row's top can be above the terrace while its bottom
+                  // still intersects the avatar standing on it.
+                  candidate.rect.y + candidate.rect.height + tuning.bodyHeight + 8 <=
+                    branchY &&
                   target.rect.x + target.rect.width / 2 >= candidate.rect.x &&
                   target.rect.x + target.rect.width / 2 <=
                     candidate.rect.x + candidate.rect.width &&
