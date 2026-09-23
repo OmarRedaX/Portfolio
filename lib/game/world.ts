@@ -460,7 +460,9 @@ function attempt(
       .filter((id) => id !== "hero" && id !== "contact")
       .map((id) => snapshot.sectionAnchors[id]),
   ];
-  const registered = snapshot.plannedSurfaces.filter(
+  // Planned reveal geometry guides layout only. Prove and expose collisions
+  // against settled registrations; each newly settled set requires validation.
+  const registered = snapshot.surfaces.filter(
     (surface) =>
       surface.x >= 0 &&
       surface.x + surface.width <= viewportWidth &&
@@ -591,6 +593,7 @@ export function buildWorld(
   const key = JSON.stringify([
     snapshot.sectionBounds,
     snapshot.sectionAnchors,
+    snapshot.surfaces,
     snapshot.plannedSurfaces,
     snapshot.plannedActionRows,
     snapshot.actionRows,

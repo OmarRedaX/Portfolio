@@ -253,3 +253,14 @@ test("destination landing prefers its checkpoint and restricts fallback to clear
   assert.equal(promoted.checkpoints.projects, helper.id);
   assert.deepEqual(promoted.surfaces.filter(surface => surface.section === "projects" && surface.checkpoint).map(surface => surface.id), [helper.id]);
 });
+
+test("destination landing accepts a clear narrow checkpoint supported by overlap", () => {
+  const geometry = snapshotWith("unused", {} as HTMLElement, []);
+  geometry.sectionBounds.projects = { x: 0, y: 500, width: 768, height: 500 };
+  const checkpoint: Surface = { id: "narrow-checkpoint", section: "projects", x: 730, y: 600, width: 16, checkpoint: true };
+  const world = { surfaces: [checkpoint], checkpoints: { projects: checkpoint.id }, obstacles: [] } as unknown as World;
+  assert.equal(destinationLanding(world, geometry, "projects", tuning)?.id, checkpoint.id);
+  assert.equal(destinationLanding({ ...world, obstacles: [{ x: 727, y: 568, width: 1, height: 32 }] }, geometry, "projects", tuning), null);
+  // The support fits, but a centered body at the viewport edge does not.
+  assert.equal(destinationLanding({ ...world, surfaces: [{ ...checkpoint, x: 0 }] }, geometry, "projects", tuning), null);
+});

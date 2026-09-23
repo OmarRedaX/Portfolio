@@ -268,6 +268,7 @@ test("measured 768px homepage has a playable checkpoint and action route", () =>
     width,
     checkpoint: false,
   }));
+  snapshot.surfaces = [...snapshot.plannedSurfaces];
   const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 720 }, 1);
   assert.ok(result.ok, JSON.stringify(result));
   assert.equal(Object.keys(result.world.actionLedges).length, 5);
@@ -414,6 +415,7 @@ test("measured 1024px homepage retains a witnessed route", () => {
     width,
     checkpoint: false,
   }));
+  snapshot.surfaces = [...snapshot.plannedSurfaces];
   const result = buildWorld(snapshot, tuning, { width: 1024, usableHeight: 720 }, 3);
   assert.ok(result.ok, JSON.stringify(result));
   assert.equal(Object.keys(result.world.actionLedges).length, 5);
@@ -492,6 +494,7 @@ test("a registered intervening top participates in full-world collision validati
     width: 32,
     checkpoint: false,
   });
+  snapshot.surfaces = [...snapshot.plannedSurfaces];
   const result = buildWorld(snapshot, tuning, { width: 768, usableHeight: 700 }, 10);
   if (!result.ok) {
     assert.equal(result.reason, "layout");

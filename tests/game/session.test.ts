@@ -1,6 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createSession, transition, restoreSupport, ownsGameKey } from "../../lib/game/session";
+import { spawn, step } from "../../lib/game/physics";
+import type { Tuning } from "../../lib/game/model";
+
+const tuning: Tuning = { step: 1 / 120, speed: 240, gravity: 1100, jumpSpeed: 580,
+  bodyWidth: 24, bodyHeight: 32, landingMargin: 2, reachX: 110, reachY: 150 };
+
+for (const width of [12, 16]) {
+  for (const moved of [false, true]) {
+    test(`revalidation preserves ${moved ? "moved" : "unchanged"} ${width}px helper footing`, () => {
+      const old = { id: "narrow", section: "hero" as const, x: 40, y: 100, width, checkpoint: false };
+      const next = { ...old, x: moved ? 70 : 40, y: moved ? 140 : 100 };
+      const body = spawn(old, tuning);
+      assert.equal(step(body, { direction: 0, jumpPressed: false }, [old], tuning).body.groundedOn, "narrow");
+      const restored = restoreSupport(body, [old], [next], [], 768);
+      assert.deepEqual(restored, { ...body, x: next.x + (width - 24) / 2, y: next.y - 32 });
+      assert.equal(step(restored!, { direction: 0, jumpPressed: false }, [next], tuning).body.groundedOn, "narrow");
+      assert.equal(restoreSupport(body, [old], [next], [{ x: next.x, y: next.y - 32, width: 1, height: 32 }], 768), null);
+      assert.equal(restoreSupport({ ...body, x: old.x + old.width }, [old], [next], [], 768), null);
+      assert.equal(restoreSupport(body, [old], [{ ...next, x: 0 }], [], 768), null);
+      assert.equal(restoreSupport(body, [old], [{ ...next, x: 768 - width }], [], 768), null);
+    });
+  }
+}
 
 test("gameplay keyboard rejects editable composed ancestors and prevented events", () => {
   const host = {};
@@ -15,10 +38,10 @@ test("layout replacement preserves only safe support with relative horizontal po
   const old = { id: "base", section: "hero" as const, x: 10, y: 100, width: 100, checkpoint: false };
   const next = { ...old, x: 30, y: 140 };
   const body = { x: 40, y: 68, width: 24, height: 32, vx: 2, vy: 0, groundedOn: "base" };
-  assert.deepEqual(restoreSupport(body, [old], [next], []), { ...body, x: 60, y: 108, vx: 0, vy: 0 });
-  assert.equal(restoreSupport(body, [old], [], []), null);
-  assert.equal(restoreSupport(body, [old], [next], [{ x: 60, y: 108, width: 24, height: 32 }]), null);
-  assert.equal(restoreSupport({ ...body, groundedOn: null }, [old], [next], []), null);
+  assert.deepEqual(restoreSupport(body, [old], [next], [], 768), { ...body, x: 60, y: 108, vx: 0, vy: 0 });
+  assert.equal(restoreSupport(body, [old], [], [], 768), null);
+  assert.equal(restoreSupport(body, [old], [next], [{ x: 60, y: 108, width: 24, height: 32 }], 768), null);
+  assert.equal(restoreSupport({ ...body, groundedOn: null }, [old], [next], [], 768), null);
 });
 
 test("clearing focus pause never resumes", () => {

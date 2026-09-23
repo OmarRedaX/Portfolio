@@ -76,7 +76,8 @@ export function destinationLanding(world: World, geometry: GeometrySnapshot, sec
   const safe = world.surfaces.filter((surface) => surface.section === section &&
     surface.x >= bounds.x && surface.x + surface.width <= bounds.x + bounds.width &&
     surface.y >= bounds.y + tuning.bodyHeight && surface.y <= bounds.y + bounds.height &&
-    restoreSupport(spawn(surface, tuning), [surface], [surface], world.obstacles));
+    spawn(surface, tuning).x >= bounds.x &&
+    restoreSupport(spawn(surface, tuning), [surface], [surface], world.obstacles, bounds.x + bounds.width));
   return safe.find((surface) => surface.id === world.checkpoints[section]) ??
     safe.find((surface) => !geometry.plannedSurfaces.some((base) => base.id === surface.id)) ?? null;
 }

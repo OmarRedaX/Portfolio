@@ -205,7 +205,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
       if (!landing) { send({ type: "VALIDATED", valid: false }); return false; }
       if (!landing.checkpoint) world = withDestinationCheckpoint(world, landing);
       if (!oldWorld) body.current = spawn(landing, tuning);
-      else if (key !== previousWorldKey) body.current = restoreSupport(body.current, oldWorld.surfaces, world.surfaces, world.obstacles) ?? spawn(landing, tuning);
+      else if (key !== previousWorldKey) body.current = restoreSupport(body.current, oldWorld.surfaces, world.surfaces, world.obstacles, innerWidth) ?? spawn(landing, tuning);
       previousWorldKey = key;
       width = document.documentElement.clientWidth;
       // Body's in-flow border box excludes the absolute game portal.

@@ -7,13 +7,16 @@ export function ownsGameKey(defaultPrevented: boolean, path: readonly unknown[],
   });
 }
 
-export function restoreSupport(body: Body, previous: readonly Surface[], next: readonly Surface[], obstacles: readonly Rect[]): Body | null {
+export function restoreSupport(body: Body, previous: readonly Surface[], next: readonly Surface[], obstacles: readonly Rect[], viewportWidth: number): Body | null {
   const old = previous.find((surface) => surface.id === body.groundedOn);
   const support = next.find((surface) => surface.id === body.groundedOn);
   if (!old || !support) return null;
   const x = support.x + body.x - old.x;
   const candidate = { ...body, x, y: support.y - body.height, vx: 0, vy: 0 };
-  if (x < support.x || x + body.width > support.x + support.width) return null;
+  // One-way physics supports any positive horizontal overlap, including a
+  // centered body wider than its helper. Clearance still applies to the body.
+  if (x >= support.x + support.width || x + body.width <= support.x) return null;
+  if (x < 0 || x + body.width > viewportWidth) return null;
   if (obstacles.some((rect) => candidate.x < rect.x + rect.width && candidate.x + candidate.width > rect.x && candidate.y < rect.y + rect.height && candidate.y + candidate.height > rect.y)) return null;
   return candidate;
 }
