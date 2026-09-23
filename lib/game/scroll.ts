@@ -205,10 +205,12 @@ export function createScrollCoordinator(
     arrived: () => boolean = () => true,
   ): Promise<boolean> {
     return new Promise((resolve) => {
+      // Browsers snap offsets to device pixels, so a sub-pixel request may never
+      // scroll and never emit scrollend; the stable-frame check still applies.
       const needsScrollEnd =
         kind === "reposition" &&
         targetY !== null &&
-        targetY !== environment.window.scrollY &&
+        Math.abs(targetY - environment.window.scrollY) >= 1 &&
         "onscrollend" in environment.window;
       const operation: ActiveScroll = {
         resolve,
@@ -332,8 +334,11 @@ export function createScrollCoordinator(
       const reveal = target.closest<HTMLElement>("[data-game-reveal-state]");
       if (reveal?.dataset.gameRevealState !== undefined && reveal.dataset.gameRevealState !== "settled")
         return false;
-      return !Array.from(target.querySelectorAll("[data-game-reveal-state]:not([data-game-reveal-state='settled'])"))
+      // Pending descendants peeking in below their trigger threshold may never
+      // start; only visible motion delays arrival (readGeometry uses the same rule).
+      return !Array.from(target.querySelectorAll<HTMLElement>("[data-game-reveal-state='moving']"))
         .some((element) => {
+          if (element.dataset.gameRevealState !== "moving") return false;
           const rect = element.getBoundingClientRect();
           return rect.bottom > 0 && rect.top < environment.window.innerHeight;
         });

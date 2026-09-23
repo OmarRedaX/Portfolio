@@ -340,7 +340,7 @@ test("measured 1440px homepage retains a witnessed route", () => {
   assert.equal(Object.keys(result.world.actionLedges).length, 5);
 });
 
-test("measured 1024px homepage retains a witnessed route", () => {
+function measured1024(): GeometrySnapshot {
   const snapshot = fixture();
   const y = [632.31, 1065.17, 1895, 3256.59, 4848.78, 5671.88];
   const h = [67.59, 65.5, 65.5, 65.5, 65.5, 129.58];
@@ -416,9 +416,43 @@ test("measured 1024px homepage retains a witnessed route", () => {
     checkpoint: false,
   }));
   snapshot.surfaces = [...snapshot.plannedSurfaces];
+  return snapshot;
+}
+
+test("measured 1024px homepage retains a witnessed route", () => {
+  const snapshot = measured1024();
   const result = buildWorld(snapshot, tuning, { width: 1024, usableHeight: 720 }, 3);
   assert.ok(result.ok, JSON.stringify(result));
   assert.equal(Object.keys(result.world.actionLedges).length, 5);
+});
+
+test("a Contact arrival before Projects has revealed keeps a witnessed 1024px route", () => {
+  // Observed live: Hero's Contact action scrolls past Projects without
+  // revealing it. Its rows keep planned ledges while their links stay disabled,
+  // and the contact form beside the actions rules out the right gutter.
+  const snapshot = measured1024();
+  snapshot.surfaces = [];
+  snapshot.targets = snapshot.targets.map((target) => ({
+    ...target,
+    enabled: target.id.startsWith("hero") || target.id.startsWith("contact"),
+  }));
+  const result = buildWorld(snapshot, tuning, { width: 1024, usableHeight: 705 }, 4);
+  assert.ok(result.ok, JSON.stringify(result));
+  assert.ok(result.world.surfaces.some((surface) => surface.id === result.world.checkpoints.contact));
+  for (const connection of result.world.connections) {
+    let body = spawn(
+      result.world.surfaces.find((surface) => surface.id === connection.from)!,
+      tuning,
+    );
+    for (const input of connection.frames)
+      body = step(body, input, result.world.surfaces, tuning).body;
+    assert.equal(body.groundedOn, connection.to);
+    assert.ok(
+      result.world.connections.some(
+        (reverse) => reverse.from === connection.to && reverse.to === connection.from,
+      ),
+    );
+  }
 });
 
 test("both ends of a wide action row have reachable registered links", () => {

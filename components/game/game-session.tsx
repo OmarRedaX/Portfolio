@@ -188,7 +188,12 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
       if (!alive || controlsHeight.current === 0) return false;
       const next = readGeometry(root);
       const key = snapshotKey(next);
-      if (!force && key === geometryKey) return state.layoutValid;
+      if (!force && key === geometryKey) {
+        // A resize can pause without changing the measured layout. The current
+        // world still stands; clear only the layout blocker, never resume.
+        if (state.layoutValid && state.reasons.includes("layout")) send({ type: "VALIDATED", valid: true });
+        return state.layoutValid;
+      }
       const oldWorld = world;
       if (oldWorld && !force) pause("layout");
       headerBottom = Math.max(0, next.headerBottom);

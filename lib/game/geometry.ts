@@ -100,11 +100,17 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
     if (!section) return;
     const rect = measure(element);
     const isVisible = visible(element) && rect.width > 0 && rect.height > 0;
-    const revealState = element.closest<HTMLElement>("[data-game-reveal-state]")?.dataset
-      .gameRevealState;
+    const reveal = element.closest<HTMLElement>("[data-game-reveal-state]");
+    const revealState = reveal?.dataset.gameRevealState;
     const settled = revealState === undefined || revealState === "settled";
+    // A pending reveal peeking in below its whileInView threshold may never
+    // start, and pending geometry is already inactive. Only motion is unsafe,
+    // including a staggered parent whose items still wait on their delay.
+    let moving = false;
+    for (let node: HTMLElement | null = reveal; node; node = node.parentElement)
+      if (node.dataset?.gameRevealState === "moving") moving = true;
     if (
-      !settled &&
+      moving &&
       rect.y - window.scrollY < window.innerHeight &&
       rect.y + rect.height - window.scrollY > 0
     )

@@ -304,7 +304,7 @@ test("offscreen destination reveals do not prevent arrival but visible moving re
   browser.location.hash = "#projects";
   let revealTop = 200;
   browser.target = { closest: () => null, querySelectorAll: () => [
-    { getBoundingClientRect: () => ({ top: revealTop, bottom: revealTop + 100 }) },
+    { dataset: { gameRevealState: "moving" }, getBoundingClientRect: () => ({ top: revealTop, bottom: revealTop + 100 }) },
   ] } as unknown as Element;
   const scroll = coordinator(browser);
   const pending = scroll.observeNavigation(new AbortController().signal, () => true);
@@ -313,6 +313,21 @@ test("offscreen destination reveals do not prevent arrival but visible moving re
   revealTop = 900;
   browser.frame(); browser.frame();
   assert.equal(await pending, true);
+  scroll.dispose();
+});
+
+test("a pending destination reveal peeking in below its trigger threshold does not block arrival", async () => {
+  // Observed live at 1024px: lower project cards overlapped the viewport by
+  // ~70px, under whileInView's 20% amount, and stayed pending indefinitely.
+  const browser = new FakeBrowser();
+  browser.location.hash = "#projects";
+  browser.target = { closest: () => null, querySelectorAll: () => [
+    { dataset: { gameRevealState: "pending" }, getBoundingClientRect: () => ({ top: 730, bottom: 1170 }) },
+  ] } as unknown as Element;
+  const scroll = coordinator(browser);
+  const arrival = scroll.observeNavigation(new AbortController().signal, () => true);
+  browser.frame(); browser.frame();
+  assert.equal(await Promise.race([arrival, Promise.resolve("pending")]), true);
   scroll.dispose();
 });
 
@@ -382,6 +397,22 @@ test("a stable out-of-range follow result relinquishes ownership and pauses brow
   browser.frame();
 
   assert.equal(manualPauses, 1);
+});
+
+test("a subpixel reposition the browser cannot perform settles without scrollend", async () => {
+  // Observed live: Resume at scrollY=349.6 requested ~350.1; the browser keeps
+  // its device-pixel offset, so neither scroll nor scrollend is ever emitted.
+  const browser = new FakeBrowser();
+  browser.scrollY = 349.6;
+  const scroll = coordinator(browser);
+  const result = scroll.reposition("resume", 350.1, new AbortController().signal);
+
+  browser.frame();
+  browser.frame();
+  browser.frame();
+  browser.fireTimers();
+
+  assert.equal(await result, true);
 });
 
 test("reposition falls back to stable frames when scrollend is unavailable", async () => {

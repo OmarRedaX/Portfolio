@@ -286,6 +286,7 @@ function attempt(
     checkpoint: !!knot.checkpoint,
   }));
   const branchPairs: Array<[Surface, Surface]> = [];
+  const optionalPairs: Array<[Surface, Surface]> = [];
   const verticalBases: Surface[] = [];
   const actionLedges = Object.fromEntries(
     knots.flatMap((k) => (k.actions ?? []).map((action) => [action, k.id])),
@@ -423,15 +424,22 @@ function attempt(
     }
     if (row.rect.x - (lane + width) <= tuning.reachX) continue;
     const branchY = row.rect.y + row.rect.height + tuning.bodyHeight + 8;
+    const routeAction = knots.find((knot) => knot.actions?.includes(row.id));
+    const routeSurface = surfaces.find((surface) => surface.id === routeAction?.id);
     const origin = surfaces
       .filter((surface) => surface.y >= branchY + 40)
       .sort((a, b) => a.y - b.y)[0];
-    if (!origin || origin.y - branchY > apex(tuning) - tuning.bodyHeight) return null;
+    // A level route knot beside the first segment can make the descent to a
+    // helper under it unwitnessable (the body lands on the knot). The level
+    // link then carries the branch; the lower link is kept only when proven.
+    const level = routeSurface && Math.abs(routeSurface.y - branchY) <= 1 ? routeSurface : null;
+    if (!level && (!origin || origin.y - branchY > apex(tuning) - tuning.bodyHeight))
+      return null;
     const startX = lane + width + 4;
     const total = row.rect.x - startX;
     const count = Math.ceil(total / 96);
     if (count < 1 || surfaces.length + count > maxSurfaces) return null;
-    let prior = origin;
+    let prior = level ?? origin;
     for (let i = 0; i < count; i++) {
       const x = startX + (total * i) / count;
       const next: Surface = {
@@ -444,11 +452,9 @@ function attempt(
       };
       surfaces.push(next);
       branchPairs.push([prior, next]);
-      if (i === 0) {
-        const routeAction = knots.find((knot) => knot.actions?.includes(row.id));
-        const routeSurface = surfaces.find((surface) => surface.id === routeAction?.id);
-        if (routeSurface) branchPairs.push([routeSurface, next]);
-      }
+      if (i === 0 && routeSurface && !level) branchPairs.push([routeSurface, next]);
+      if (i === 0 && level && origin && origin.y - branchY <= apex(tuning) - tuning.bodyHeight)
+        optionalPairs.push([origin, next]);
       prior = next;
     }
     actionLedges[row.id] = prior.id;
@@ -532,6 +538,11 @@ function attempt(
       if (!connection) return null;
       connections.push(connection);
     }
+  }
+  for (const [a, b] of optionalPairs) {
+    const forward = witness(a, b, surfaces, exclusions, tuning, viewportWidth);
+    const backward = forward && witness(b, a, surfaces, exclusions, tuning, viewportWidth);
+    if (forward && backward) connections.push(forward, backward);
   }
   const visited = new Set([knots.find((k) => k.checkpoint === "hero")!.id]);
   const queue = [...visited];

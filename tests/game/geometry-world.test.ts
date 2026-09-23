@@ -120,6 +120,21 @@ test("planned reveal surfaces cannot catch the live body before settled revalida
       "pending DOM geometry must not support production physics",
     );
 
+    // Observed live at 1024px: a pending reveal peeking into the viewport below
+    // its whileInView threshold never starts, so it must not block validation.
+    scrollY = 200;
+    const peeking = readGeometry(root);
+    assert.equal(peeking.revealsSettled, true, "a pending reveal is not moving geometry");
+    assert.equal(peeking.surfaces.length, 0);
+    const peekingWorld = buildWorld(peeking, tuning, viewport, 5);
+    assert.ok(peekingWorld.ok);
+    assert.equal(
+      step(falling, still, peekingWorld.world.surfaces, tuning).landedOn,
+      null,
+      "pending geometry in view still must not support production physics",
+    );
+    scrollY = 0;
+
     reveal.dataset.gameRevealState = "moving";
     scrollY = 900;
     assert.deepEqual(buildWorld(readGeometry(root), tuning, viewport, 2), {
