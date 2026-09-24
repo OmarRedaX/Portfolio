@@ -1,5 +1,53 @@
 # Game Mode rendered-layout validation
 
+## Traversal zone survey (2026-09-24, Claude Code)
+
+Traversal plan Task 3. Headless Chrome over CDP against the local `next dev` homepage. For each configuration, the page was scrolled to the bottom in 400px steps with a 300ms wait per step, then scrolled back to the top. `readGeometry(main)` was then read through a temporary `window.__gameSnapshot` hook, which was removed afterwards. Every capture reported `revealsSettled: true`, 8/8 surfaces, 13 targets, 8 obstacles and 13 keep-outs. The HUD height came from a started session: 111.59375px at every width, with the header bottom at 123.78125px. So `usableHeight` = visual height − 123.78 − 111.59. The snapshots are committed as `tests/game/fixtures/rendered-homepage.ts` (`measuredHomepage`).
+
+| Configuration | innerWidth / clientWidth | usableHeight | Content left–right |
+|---|---|---|---|
+| 1440×900 | 1440 / 1425 | 664.63 | 184.5–1240.5 |
+| 1280×800 | 1280 / 1265 | 564.63 | 104.5–1160.5 |
+| 1024×900 `--hide-scrollbars` | 1024 / 1024 | 664.63 | 48–976 |
+| 768×900 classic scrollbar | 768 / 753 | 664.63 | 32–721 |
+
+**Today's backbone** (`buildWorld`, unchanged, before any course):
+
+| Configuration | Lane x / width | Surfaces | Helpers | Connections |
+|---|---|---|---|---|
+| 1440 | 162.5 / 12 (left) | 85 | 42 | 152 |
+| 1280 | 82.5 / 12 (left) | 85 | 42 | 152 |
+| 1024-overlay | 26 / 12 (left) | 80 | 41 | 142 |
+| 768-classic | 727 / 16 (right) | 94 | 44 | 170 |
+
+The largest backbone surface count is 94 (768-classic). Task 7 uses it for `maxSurfaces`.
+
+**Zones.** These are raw measurements, before the 12px course clearance. A band's top is the lowest bottom of any keep-out, obstacle or planned action row in section N. Its bottom is the top of section N+1's anchor. The Hero floor runs from the bottom of the Hero action row to the bottom of the Hero section. Gutters are measured over the Experience keep-outs. On the left, a gutter runs from 0 to Experience content left. On the right, it runs from Experience content right to `clientWidth`.
+
+| Zone | 1440 | 1280 | 1024-overlay | 768-classic |
+|---|---|---|---|---|
+| Hero floor (713.02→950.78 at 1440) | 237.77 | 192.81 | 250.88 | 258.94 |
+| Hero→About band | 365.77 | 320.81 | 353.27 | 335.73 |
+| About→Tech Stack band | 257.00 | 257.00 | 205.78 | 154.59 |
+| Tech Stack→Projects band | 257.00 | 257.00 | 205.78 | 154.59 |
+| Projects→Experience band | 257.00 | 257.00 | 205.78 | 154.59 |
+| Experience→Contact band | 352.58 | 352.58 | 295.28 | 236.38 |
+| Experience gutter, left / right | 184.5 / 184.5 | 104.5 / 104.5 | 48 / 48 | 32 / 32 |
+| Experience keep-out y-span | 5005→5427.31 | 4905→5327.31 | 4912.09→5334.41 | 5197.58→5671.08 |
+
+Band y-ranges at 1440: About→Tech 1708.91→1965.91; Tech→Projects 3007.05→3264.05; Projects→Experience 4636.42→4893.42; Experience→Contact 5427.31→5779.89. The Experience keep-out tops, which the timeline rungs align to, are at 5005 and 5236.16 at 1440 and at 4905 and 5136.16 at 1280.
+
+**Decision gate (spec §3.3): passed at 1440 and 1280.** Every planned zone exists:
+- Bands are 257–366px tall (the gate requires at least 150).
+- Hero floors are 237.77 and 192.81px tall (at least 96).
+- Experience gutters are 184.5 and 104.5px wide (at least 104).
+
+**Risk carried to Tasks 5 and 8.** The 1280 gutter passes with only 0.5px to spare. Spec §3.2 measures the gutter from the viewport edge to content left, which gives 104.5. The plan's Task 5 `findZone` also subtracts the 12px course clearance, which gives 92.5. That is below its own `2 × laneWidth + 8` = 104 rule, so as written Timeline rungs would be rejected at 1280. That contradicts Task 8's "all six courses at 1280". This has to be resolved before or in Task 5. Loosening a rule to pass is not an option.
+
+At 1024-overlay and 768-classic the gutters are 48 and 32px, so Timeline rungs will fall back to the backbone there, as planned. The 768-classic bands are 154.59px (130.59 after clearance), so they are tight for two-row courses.
+
+**Sanity:** each of the four measured fixtures still builds today's backbone. The `measured <v> fixture keeps today's backbone` tests all pass, with 91 game tests in total.
+
 ## Browser zoom, touch-only devices, and blocked pop-ups (2026-09-24, Claude Code)
 
 Headless Chrome over CDP with trusted input, dev server, classic scrollbars unless stated. Page zoom was emulated as Chromium applies it: CSS viewport = 1280×900 ÷ zoom and `devicePixelRatio` = zoom (`Emulation.setDeviceMetricsOverride`). Pinch-zoom used `Emulation.setPageScaleFactor`. A read-only `window.__gameWorld` hook located ledges and was removed afterwards.

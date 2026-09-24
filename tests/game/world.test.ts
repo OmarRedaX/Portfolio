@@ -4,6 +4,7 @@ import { buildWorld, outsidePlayablePath, viewportSupportsRoute } from "../../li
 import { spawn, step } from "../../lib/game/physics";
 import { createSession, transition } from "../../lib/game/session";
 import { settledProjects } from "./fixtures/rendered-projects";
+import { measuredHomepage } from "./fixtures/rendered-homepage";
 import {
   sectionIds,
   type GeometrySnapshot,
@@ -605,3 +606,10 @@ test("minimum usable height accepts its exact boundary and rejects one pixel bel
     { ok: false, reason: "viewport" },
   );
 });
+
+for (const v of ["1440", "1280", "1024-overlay", "768-classic"] as const) {
+  test(`measured ${v} fixture keeps today's backbone`, () => {
+    const { snapshot, width, usableHeight } = measuredHomepage(v);
+    assert.ok(buildWorld(snapshot, tuning, { width, usableHeight }, 1).ok);
+  });
+}
