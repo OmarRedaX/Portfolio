@@ -26,10 +26,13 @@
   inset: 0;
   border-radius: var(--radius-md);
   pointer-events: none;
+  /* Rest state governs leaving: reverses over --duration-fast. Engaged
+     (:hover/:focus-visible) rules below raise this to --duration-base for
+     entry; :active drops it back to --duration-fast for the press. */
   transition:
-    transform var(--duration-base) var(--ease-standard),
-    opacity var(--duration-base) var(--ease-standard),
-    border-color var(--duration-base) var(--ease-standard);
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
 }
 .trigger::before {
   z-index: -1;
@@ -37,11 +40,13 @@
   background: var(--background);
 }
 .trigger::after {
-  /* The ledge under the face. */
+  /* The ledge under the face. transform-origin: bottom keeps its footing
+     fixed so scaleY reads as a jump-pad compression, not a shrink upward. */
   z-index: -2;
   inset: auto 0 -4px 4px;
   top: auto;
   height: 4px;
+  transform-origin: bottom;
   border-radius: var(--radius-sm);
   background: var(--accent);
   opacity: 0;
@@ -49,7 +54,7 @@
 }
 .triggerLabel {
   display: inline-block;
-  transition: transform var(--duration-base) var(--ease-standard);
+  transition: transform var(--duration-fast) var(--ease-standard);
 }
 .peek {
   position: absolute;
@@ -61,8 +66,8 @@
   transform: translateY(8px);
   clip-path: inset(0 0 -2px 0);
   transition:
-    transform var(--duration-base) var(--ease-standard) 80ms,
-    opacity var(--duration-fast) var(--ease-standard) 80ms;
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .trigger[aria-disabled="true"]:hover {
@@ -76,33 +81,45 @@
   .trigger:not([aria-disabled="true"]):hover::before {
     transform: translateY(-2px) skewX(-8deg);
     border-color: var(--accent);
+    transition-duration: var(--duration-base);
   }
   .trigger:not([aria-disabled="true"]):hover::after {
     opacity: 1;
     transform: skewX(-8deg);
+    transition-duration: var(--duration-base);
   }
   .trigger:not([aria-disabled="true"]):hover .triggerLabel {
     transform: translateY(-2px);
+    transition-duration: var(--duration-base);
   }
   .trigger:not([aria-disabled="true"]):hover .peek {
     opacity: 1;
     transform: translateY(-2px);
+    transition:
+      transform var(--duration-base) var(--ease-standard) 80ms,
+      opacity var(--duration-fast) var(--ease-standard) 80ms;
   }
 }
 .trigger:not([aria-disabled="true"]):focus-visible::before {
   transform: translateY(-2px) skewX(-8deg);
   border-color: var(--accent);
+  transition-duration: var(--duration-base);
 }
 .trigger:not([aria-disabled="true"]):focus-visible::after {
   opacity: 1;
   transform: skewX(-8deg);
+  transition-duration: var(--duration-base);
 }
 .trigger:not([aria-disabled="true"]):focus-visible .triggerLabel {
   transform: translateY(-2px);
+  transition-duration: var(--duration-base);
 }
 .trigger:not([aria-disabled="true"]):focus-visible .peek {
   opacity: 1;
   transform: translateY(-2px);
+  transition:
+    transform var(--duration-base) var(--ease-standard) 80ms,
+    opacity var(--duration-fast) var(--ease-standard) 80ms;
 }
 
 .trigger:not([aria-disabled="true"]):active::before {
@@ -110,8 +127,10 @@
   transition-duration: var(--duration-fast);
 }
 .trigger:not([aria-disabled="true"]):active::after {
-  height: 2px;
-  bottom: -2px;
+  /* scaleY (not height/bottom) so the compression animates through the
+     transform transition instead of snapping. */
+  transform: skewX(-8deg) scaleY(0.5);
+  transition-duration: var(--duration-fast);
 }
 .trigger:not([aria-disabled="true"]):active .triggerLabel {
   transform: none;
