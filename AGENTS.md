@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Operational guide for working in this repository. This file distills the rules that matter
 day-to-day; `implementation-plan.md` is the full source of scope, phase acceptance criteria,
@@ -20,7 +20,7 @@ Vercel) has not started. Full roadmap and acceptance criteria: `implementation-p
 
 1. `implementation-plan.md` — locked decisions, phase scope, acceptance criteria. Highest
    authority for any scope question.
-2. This `CLAUDE.md` — conventions distilled from the plan for daily implementation work.
+2. This `AGENTS.md` — conventions distilled from the plan for daily implementation work.
 3. `content/*` — typed content data and the Quick Bite MDX. The **only** source of on-site
    copy. Never invent content; if a needed fact isn't here, flag it rather than fabricate it.
 4. `OMAR_REDA_TAWFIK_ABOUELFADL_Full_Stack_Engineer.docx` — the real CV. Origin of every fact
@@ -28,13 +28,14 @@ Vercel) has not started. Full roadmap and acceptance criteria: `implementation-p
 5. `.claude/settings.json` — enabled plugins (`ui-ux-pro-max`, `taste-skill`, `github`) for
    design and PR work in later phases.
 
-No other hand-authored CLAUDE.md or design guide exists in this repo (the Next.js
-agent-rules block appended at the bottom of this file is auto-managed by `next dev` itself — see
-the note at the end of this file, leave it in place; never write its begin/end HTML-comment
-markers elsewhere in this file, since `next dev` treats the first begin marker it finds as the
-block start and overwrites everything after it). `AGENTS.md` carries the same guidance for
-Codex; keep the two in sync. `README.md` is intentionally minimal and links back here rather than
-duplicating it.
+`CLAUDE.md` carries the same guidance for Claude Code; keep the two in sync. No other
+hand-authored design guide exists in this repo. `README.md` is intentionally minimal and links
+back to that guide rather than duplicating it.
+
+The Next.js agent-rules block at the bottom of this file is managed by `next dev`, which
+rewrites it in AGENTS.md whenever this file exists — leave it in place. Never write that block's
+begin/end HTML-comment markers anywhere else in this file: `next dev` treats the first begin
+marker it finds as the block start and overwrites everything after it.
 
 ## Tech Stack (locked — implementation-plan.md §2)
 
@@ -181,6 +182,22 @@ request.
 - `npm run lint` — ESLint (flat config, `eslint-config-next` + `eslint-config-prettier`)
 - `npm run format` / `npm run format:check` — Prettier (markdown is intentionally excluded —
   `implementation-plan.md` in particular should not be reformatted)
+
+## Game Mode (branch `codex/game-mode`, not merged)
+
+Optional keyboard-only platformer over the homepage. Spec: `game-mode-design.md`; plan:
+`game-mode-implementation-plan.md`; measured evidence and open gaps (newest first):
+`docs/game-mode-validation.md`. Code lives in `components/game/`, `lib/game/` and
+`content/game-mode.ts`; tests in `tests/game/` run with `npm run test:game` (TypeScript plus
+Node's built-in runner — no Jest, no DOM simulator; real-browser checks are recorded in the
+validation doc).
+
+- Fail closed: every route connection must be witnessed in both directions by the production
+  physics; never relax clearance, tuning, or witness rules to make a layout pass.
+- No pause auto-resumes; only explicit Resume plays again.
+- Viewport decision (user, 2026-09-24): keep the 24px avatar and the rule that it never overlaps
+  content. Where the settled route cannot fit (e.g. 768–1023px without classic scrollbars), show
+  the existing "Larger window required" state; do not shrink the avatar or redesign routes.
 
 ## Roadmap (full detail in `implementation-plan.md`)
 
