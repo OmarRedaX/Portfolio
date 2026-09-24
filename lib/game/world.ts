@@ -3,7 +3,6 @@ import {
   type Body,
   type Connection,
   type GeometrySnapshot,
-  type Input,
   type Rect,
   type SectionId,
   type Surface,
@@ -11,150 +10,16 @@ import {
   type Validation,
   type World,
 } from "./model";
-import { spawn, step } from "./physics";
+import { spawn } from "./physics";
+import { apex, bodyRect, clearOf, maxSurfaces, witness } from "./witness";
 
-const maxSurfaces = 160;
-const maxWitnessFrames = 180;
 const validationCache = new Map<string, Validation>();
-const clear = (a: Rect, b: Rect, margin = 0) =>
-  a.x + a.width <= b.x - margin ||
-  a.x >= b.x + b.width + margin ||
-  a.y + a.height <= b.y - margin ||
-  a.y >= b.y + b.height + margin;
-const bodyRect = (body: Body): Rect => ({
-  x: body.x,
-  y: body.y,
-  width: body.width,
-  height: body.height,
-});
 const expanded = (r: Rect, x: number, y: number): Rect => ({
   x: r.x - x,
   y: r.y - y,
   width: r.width + 2 * x,
   height: r.height + 2 * y,
 });
-
-function apex(tuning: Tuning): number {
-  let vy = -tuning.jumpSpeed,
-    height = 0,
-    greatest = 0;
-  for (let frame = 0; frame < maxWitnessFrames && vy < 0; frame++) {
-    vy += tuning.gravity * tuning.step;
-    height -= vy * tuning.step;
-    greatest = Math.max(greatest, height);
-  }
-  return greatest;
-}
-
-function witness(
-  from: Surface,
-  to: Surface,
-  surfaces: readonly Surface[],
-  obstacles: readonly Rect[],
-  tuning: Tuning,
-  viewportWidth: number,
-): Connection | null {
-  const rising = to.y < from.y;
-  const shift = Math.sign(to.x + to.width / 2 - (from.x + from.width / 2)) as -1 | 0 | 1;
-  const modes = rising
-    ? ["jump-to", "vertical"]
-    : shift
-      ? ["walk-to", "jump-to", "jump-dodge"]
-      : ["walk-off", "jump-dodge"];
-  const departure: -1 | 1 = from.x < viewportWidth / 2 ? -1 : 1;
-  for (const mode of modes) {
-    let body = spawn(from, tuning);
-    const frames: Input[] = [];
-    const corridor: Rect[] = [];
-    let escaped = false;
-    let returned = false;
-    const center = body.x;
-    const dodgeX = shift || 1;
-    const upper = surfaces
-      .filter(
-        (s) =>
-          s.id !== from.id &&
-          s.y < from.y &&
-          s.x < from.x + from.width &&
-          s.x + s.width > from.x,
-      )
-      .sort((a, b) => b.y - a.y)[0];
-    for (let frame = 0; frame < maxWitnessFrames; frame++) {
-      let direction: -1 | 0 | 1 = 0;
-      let jumpPressed = false;
-      if (mode === "vertical") jumpPressed = frame === 0;
-      if (mode === "jump-to") {
-        jumpPressed = frame === 0;
-        direction = shift && !returned ? shift : 0;
-        const desired = shift > 0 ? to.x + 2 : to.x + to.width - tuning.bodyWidth - 2;
-        if (shift && body.x * shift >= desired * shift) returned = true;
-      }
-      if (mode === "walk-to") direction = shift;
-      if (mode === "walk-off") {
-        direction = !escaped
-          ? departure
-          : body.y + body.height <= from.y + 2
-            ? 0
-            : (body.x - center) * departure > 1e-6
-              ? (-departure as -1 | 1)
-              : 0;
-      }
-      if (mode === "jump-dodge") {
-        jumpPressed = frame === 0;
-        const bottom = body.y + body.height;
-        const safeToReturn =
-          body.vy > 0 && bottom > from.y + 2 && (!upper || bottom > upper.y + 2);
-        if (shift < 0) {
-          direction = !safeToReturn
-            ? body.x + body.width > from.x - 2 * tuning.bodyWidth - 4
-              ? -1
-              : 0
-            : body.x < to.x + (to.width - body.width) / 2
-              ? 1
-              : 0;
-        } else {
-          direction = (
-            !safeToReturn && body.x < from.x + from.width + 2
-              ? dodgeX
-              : body.x > center + 1e-6
-                ? -dodgeX
-                : 0
-          ) as -1 | 0 | 1;
-        }
-      }
-      const input: Input = { direction, jumpPressed };
-      const next = step(body, input, surfaces, tuning).body;
-      frames.push(input);
-      corridor.push(bodyRect(next));
-      if (!escaped && next.groundedOn === null) escaped = true;
-      if (
-        next.x < 0 ||
-        next.x + next.width > viewportWidth ||
-        obstacles.some((obstacle) => !clear(bodyRect(next), obstacle, 2))
-      )
-        break;
-      body = next;
-      if (body.groundedOn === to.id)
-        return { from: from.id, to: to.id, frames, corridor };
-      if (body.groundedOn && body.groundedOn !== from.id) break;
-      if (mode === "walk-off" && escaped && (body.x - center) * departure <= 1e-6) {
-        // Keep the body centered after the one-way departure.
-        for (let extra = 0; extra < maxWitnessFrames - frame - 1; extra++) {
-          const still: Input = { direction: 0, jumpPressed: false };
-          body = step(body, still, surfaces, tuning).body;
-          frames.push(still);
-          corridor.push(bodyRect(body));
-          if (obstacles.some((obstacle) => !clear(bodyRect(body), obstacle, 2))) break;
-          if (body.groundedOn === to.id)
-            return { from: from.id, to: to.id, frames, corridor };
-          if (body.groundedOn) break;
-        }
-        break;
-      }
-    }
-  }
-  return null;
-}
 
 type Knot = {
   y: number;
@@ -476,7 +341,7 @@ function attempt(
       Number.isFinite(surface.y) &&
       !surfaces.some((candidate) => candidate.id === surface.id) &&
       exclusions.every((obstacle) =>
-        clear(bodyRect(spawn(surface, tuning)), obstacle, 2),
+        clearOf(bodyRect(spawn(surface, tuning)), obstacle, 2),
       ),
   );
   if (surfaces.length + registered.length > maxSurfaces) return null;
@@ -486,7 +351,7 @@ function attempt(
     if (
       body.x < 0 ||
       body.x + body.width > viewportWidth ||
-      exclusions.some((obstacle) => !clear(bodyRect(body), obstacle, 2))
+      exclusions.some((obstacle) => !clearOf(bodyRect(body), obstacle, 2))
     )
       return null;
   }
@@ -669,7 +534,7 @@ export function viewportSupportsRoute(
 }
 
 export function outsidePlayablePath(body: Body, world: World): boolean {
-  if (world.envelope.some((rect) => !clear(bodyRect(body), rect))) return false;
+  if (world.envelope.some((rect) => !clearOf(bodyRect(body), rect))) return false;
   // A body falling toward a registered lower support remains on a recoverable descent.
   return !world.surfaces.some(
     (surface) =>
