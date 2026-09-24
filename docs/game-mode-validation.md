@@ -1,5 +1,24 @@
 # Game Mode rendered-layout validation
 
+## Browser zoom, touch-only devices, and blocked pop-ups (2026-09-24, Claude Code)
+
+Headless Chrome over CDP with trusted input, dev server, classic scrollbars unless stated. Page zoom was emulated as Chromium applies it: CSS viewport = 1280×900 ÷ zoom and `devicePixelRatio` = zoom (`Emulation.setDeviceMetricsOverride`). Pinch-zoom used `Emulation.setPageScaleFactor`. A read-only `window.__gameWorld` hook located ledges and was removed afterwards.
+
+| Case | Observed |
+|---|---|
+| Zoom 67 / 90 / 110 / 125% (CSS width 1910 / 1422 / 1164 / 1024) | Started. At each level the avatar walked off the Hero lane, landed on the next helper, and jumped back to Hero. No horizontal overflow. |
+| Zoom 150% (853 CSS px) | Continue ended the session with **Larger window required**. At this zoom the classic scrollbar is only ~10 CSS px, so the 32px gutter plus that strip cannot host the route (same rule as the overlay-scrollbar case). |
+| Zoom 175 / 200% (731 / 640 CSS px) | Below 768: trigger hidden, **Larger window required** hint shown, no dialog, no overflow. |
+| Zoom change mid-session | 100→125%: paused with Resume enabled, footing preserved; after Resume, movement worked. 125→150%: **Larger window required.** with Resume disabled. Back to 100%: Resume enabled, avatar restaged at the Hero checkpoint (its old terrace no longer exists), no auto-resume. |
+| Pinch-zoom 2× mid-session | Visual viewport 450px tall leaves less than the 231px usable-height minimum: **Larger window required.**, Resume disabled. Returning to 1× re-enabled Resume; explicit Resume played. |
+| Phone 390×844, touch + coarse pointer | Trigger hidden, **Larger window required** hint, no overflow, no game DOM or marker. A raw touch drag scrolled the page natively (scrollY 0→335). |
+| Touch-only tablet 1024×768 (`pointer`/`any-pointer: coarse`, `hover: none`) | Trigger reads **Keyboard required**. Tapping it showed **Keyboard required** with no dialog. A touch drag scrolled natively (0→509). |
+| Hybrid tablet with keyboard | Keyboard Enter on the trigger counted as keyboard evidence: the dialog opened and Game Mode started. A touch drag during play scrolled natively (0→518) and paused as browsing. |
+| Listeners (DevTools `getEventListeners`) | Off: window/document touch/wheel/pointer listeners are identical to the non-game page (React/Next's own); no game listeners. During a session the game adds window `touchmove` and `wheel` listeners, both **passive**, so they cannot cancel scrolling. |
+| Blocked pop-up | `--block-new-web-contents` did not stop a keypress-initiated `target="_blank"` link in headless Chrome (the tab opened; the portfolio paused on focus loss, as in the allowed case). Blocking was therefore emulated with a capture-phase listener cancelling `target="_blank"` clicks, as a blocking extension or policy would. Enter on the presented **GitHub** selection was blocked (no new page, URL unchanged), and the session stayed **playing** with no pause, no transition, and no freeze. Real input kept moving the avatar, and a second Enter activated (and was blocked) again. |
+
+Tool notes: `Input.synthesizeScrollGesture` does not scroll in this headless build, so raw `Input.dispatchTouchEvent` drags were used; they were first validated on `/resume`. Game Mode's `prefers-reduced-motion` handling was not re-run here.
+
 ## Live-concern diagnosis and browser acceptance (2026-09-23, Claude Code)
 
 The previous wave left the settled 1024px safe-layout rejection and the no-progress Resume attempts without isolated root causes, and could not hold keys. This wave drove headless Chrome over the DevTools protocol (Node's built-in WebSocket, no dependency): trusted `Input.dispatchKeyEvent` key-down/auto-repeat/key-up, mouse clicks/wheel, and page-context reads. Two instances were used: one without classic scrollbars (DPR 1 via `Emulation.setDeviceMetricsOverride`), and one launched with `--force-device-scale-factor=1.25`, which renders classic 16px scrollbars and real fractional scroll offsets. Game state was read through a temporary `window.__gameWorld`/`__gameDebug` hook in `game-session.tsx`, removed before commit; gameplay was driven only by trusted input.
@@ -39,7 +58,7 @@ With overlay scrollbars (macOS default; headless without scrollbars), every prob
 
 **Evidence.** Two new world tests (a 32px-gutter 768px layout and too little height are unsupported while the classic-scrollbar layout is supported; a moving, unrevealed 1024px layout is never unsupported) failed before the export existed and pass now. Live, headless without scrollbars: at 768 and 1023, Continue ended the session with no HUD, avatar, or marker, status **Larger window required**, and focus on the trigger; a second press opened no dialog. 1024 played. Narrowing a playing 1024 session to 900 paused with **Larger window required.**, Resume disabled; widening back gave **Game Mode paused.** with Resume enabled. After exiting, a narrow start was unavailable and the dialog opened again once widened. With classic scrollbars, 768 and 900 still started and 768 descended to the next helper.
 
-Other remaining gaps: browser zoom, touch-only devices, and popup blocking were not exercised. The avatar can move laterally with its platform when revalidation moves the route between gutter lanes (footing is preserved on the same logical support while paused).
+Other remaining note: The avatar can move laterally with its platform when revalidation moves the route between gutter lanes (footing is preserved on the same logical support while paused).
 
 Commands (after the viewport-support change): `npm run test:game` **86 passed / 0 failed**; `npx tsc --noEmit --incremental false` exit 0; `npm run lint` exit 0; `npm run build` exit 0 (13 pages); `git diff --check` clean.
 
