@@ -22,6 +22,7 @@ export function ProjectCard({
 
   return (
     <article
+      data-game-keepout
       className={`card flex h-full flex-col gap-5 ${size === "large" ? "lg:p-10" : ""}`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">

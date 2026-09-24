@@ -32,6 +32,7 @@ export function TechStack() {
                     .toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "")}-top`}
+                  data-game-keepout
                   className="card h-full"
                 >
                   <h3 className="font-display text-h3 mb-4">{category.name}</h3>

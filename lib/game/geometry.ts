@@ -9,7 +9,7 @@ import {
 
 const geometryEvent = "portfolio:geometry-change";
 const registeredSelector =
-  "[data-game-section], [data-game-checkpoint], [data-game-surface], [data-game-action-row], [data-game-target], [data-game-obstacle]";
+  "[data-game-section], [data-game-checkpoint], [data-game-surface], [data-game-action-row], [data-game-target], [data-game-obstacle], [data-game-keepout]";
 
 export function toDocumentRect(
   rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
@@ -80,6 +80,7 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
   const targets: TargetBox[] = [];
   const plannedTargets: TargetBox[] = [];
   const obstacles: Rect[] = [];
+  const keepouts: Rect[] = [];
   let revealsSettled = true;
   const sectionAnchors = emptyBounds();
   const plannedSurfaces: Surface[] = [];
@@ -155,6 +156,10 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
       plannedTargets.push({ ...target, enabled: usable });
     }
     if (element.dataset.gameObstacle && isVisible) obstacles.push(rect);
+    // Course-only clearance, measured at planned position regardless of reveal
+    // state; never folded into obstacles or anything the backbone reads.
+    if (element.dataset.gameKeepout !== undefined && visible(element))
+      keepouts.push(rect);
   });
 
   const header = document.querySelector<HTMLElement>("[data-game-header]");
@@ -167,6 +172,7 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
     sectionBounds,
     sectionAnchors,
     obstacles,
+    keepouts,
     actionRows,
     plannedActionRows,
     headerBottom: header?.getBoundingClientRect().bottom ?? 0,
@@ -185,9 +191,7 @@ export function observeGeometry(root: HTMLElement, onDirty: () => void): () => v
   };
   const observer = new ResizeObserver(dirty);
   root
-    .querySelectorAll<HTMLElement>(
-      "[data-game-section], [data-game-checkpoint], [data-game-surface], [data-game-action-row], [data-game-target], [data-game-obstacle]",
-    )
+    .querySelectorAll<HTMLElement>(registeredSelector)
     .forEach((element) => observer.observe(element));
   const header = document.querySelector<HTMLElement>("[data-game-header]");
   if (header) observer.observe(header);

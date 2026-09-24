@@ -140,6 +140,7 @@ function snapshotWith(
       contact: emptyRect,
     },
     obstacles: [],
+    keepouts: [],
     actionRows: [],
     plannedActionRows: [],
     plannedTargets: [],

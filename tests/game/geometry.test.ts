@@ -98,6 +98,76 @@ test("moving supports remain planned while hidden and moving actions cannot acti
   }
 });
 
+test("keep-outs are planned, normalized, and separate from backbone obstacles", () => {
+  const previous = {
+    window: globalThis.window,
+    document: globalThis.document,
+    getComputedStyle: globalThis.getComputedStyle,
+    DOMMatrixReadOnly: globalThis.DOMMatrixReadOnly,
+  };
+  class StubDOMMatrixReadOnly {
+    m41: number;
+    m42: number;
+    constructor(transform: string) {
+      const values = transform.slice("matrix(".length, -1).split(",").map(Number);
+      this.m41 = values[4];
+      this.m42 = values[5];
+    }
+  }
+  const section = {
+    dataset: { gameSection: "hero" },
+    parentElement: null,
+    classList: { contains: () => false },
+    hasAttribute: () => false,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 768, height: 900 }),
+    querySelector: () => null,
+  };
+  const reveal = {
+    dataset: { gameRevealState: "pending" },
+    parentElement: section,
+    classList: { contains: () => false },
+    hasAttribute: (name: string) => name === "data-game-reveal-state",
+  };
+  const keepoutCard = {
+    dataset: { gameKeepout: "" },
+    parentElement: reveal,
+    isConnected: true,
+    classList: { contains: () => false },
+    hasAttribute: () => false,
+    getAttribute: () => null,
+    getClientRects: () => [{}],
+    getBoundingClientRect: () => ({ left: 0, top: 300, width: 300, height: 120 }),
+    closest: (selector: string) =>
+      selector === "[data-game-section]"
+        ? section
+        : selector === "[data-game-reveal-state]"
+          ? reveal
+          : null,
+    textContent: "",
+  };
+  const root = {
+    querySelectorAll: (selector: string) =>
+      selector === "[data-game-section]" ? [section] : [keepoutCard],
+  } as unknown as HTMLElement;
+  Object.assign(globalThis, {
+    window: { scrollX: 0, scrollY: 0, innerHeight: 900 },
+    document: { querySelector: () => null },
+    getComputedStyle: () => ({
+      display: "block",
+      visibility: "visible",
+      transform: "matrix(1,0,0,1,0,8)",
+    }),
+    DOMMatrixReadOnly: StubDOMMatrixReadOnly,
+  });
+  try {
+    const snapshot = readGeometry(root);
+    assert.deepEqual(snapshot.keepouts, [{ x: 0, y: 292, width: 300, height: 120 }]);
+    assert.equal(snapshot.obstacles.length, 0);
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
 test("reveal signals notify geometry only during an active game", () => {
   const previousDocument = globalThis.document;
   const dataset: Record<string, string> = {};

@@ -46,6 +46,7 @@ export function settledProjects(): GeometrySnapshot {
       box(210, 5232.800048828125, 1030.4000244140625, 191.1999969482422),
       box(690.5750122070312, 5680.800048828125, 549.8125, 472.6000061035156),
     ],
+    keepouts: [],
     actionRows: [],
     plannedActionRows: [],
     headerBottom: 84,

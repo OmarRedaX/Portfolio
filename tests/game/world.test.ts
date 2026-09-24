@@ -45,6 +45,7 @@ function fixture(gap = 760): GeometrySnapshot {
     sectionBounds,
     sectionAnchors,
     obstacles: [],
+    keepouts: [],
     actionRows: [],
     plannedActionRows: [],
     headerBottom: 84,

@@ -27,7 +27,11 @@ export function Experience() {
               style={{ borderColor: "var(--border)" }}
               y={10}
             >
-              <div data-game-obstacle="content" className="flex flex-col gap-3">
+              <div
+                data-game-obstacle="content"
+                data-game-keepout
+                className="flex flex-col gap-3"
+              >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h3 className="font-display text-h3">{entry.role}</h3>
                   <span className="tag">{entry.period}</span>

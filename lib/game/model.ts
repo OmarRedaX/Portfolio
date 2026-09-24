@@ -48,6 +48,8 @@ export type GeometrySnapshot = {
   sectionBounds: Record<SectionId, Rect>;
   sectionAnchors: Record<SectionId, Rect>;
   obstacles: Rect[];
+  // Course-only clearance zones (Task 2). The backbone route never reads this field.
+  keepouts: Rect[];
   actionRows: ActionRow[];
   plannedActionRows: ActionRow[];
   headerBottom: number;

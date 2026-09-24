@@ -27,27 +27,29 @@ export function About() {
           </div>
         </Reveal>
 
-        <Reveal
-          delay={0.1}
-          className="flex flex-col gap-6 border-t pt-8 sm:flex-row sm:gap-16"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <div className="flex flex-col gap-2">
-            <span className="tag w-fit">Education</span>
-            <p className="text-body">{about.education.degree}</p>
-            <p className="text-small text-foreground-muted">
-              {about.education.institution} · {about.education.location} ·{" "}
-              {about.education.period}
-            </p>
-          </div>
+        <Reveal delay={0.1}>
+          <div
+            data-game-keepout
+            className="flex flex-col gap-6 border-t pt-8 sm:flex-row sm:gap-16"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div className="flex flex-col gap-2">
+              <span className="tag w-fit">Education</span>
+              <p className="text-body">{about.education.degree}</p>
+              <p className="text-small text-foreground-muted">
+                {about.education.institution} · {about.education.location} ·{" "}
+                {about.education.period}
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <span className="tag w-fit">Languages</span>
-            <p className="text-body">
-              {about.languages
-                .map((language) => `${language.name} (${language.level})`)
-                .join(" · ")}
-            </p>
+            <div className="flex flex-col gap-2">
+              <span className="tag w-fit">Languages</span>
+              <p className="text-body">
+                {about.languages
+                  .map((language) => `${language.name} (${language.level})`)
+                  .join(" · ")}
+              </p>
+            </div>
           </div>
         </Reveal>
       </Container>
