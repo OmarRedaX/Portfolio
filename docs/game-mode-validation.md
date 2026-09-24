@@ -1,5 +1,51 @@
 # Game Mode rendered-layout validation
 
+## Traversal courses: final tuning pass and local overshoot recovery (2026-09-25, Claude Code)
+
+The user made two decisions after Task 10: keep the current spec and make one final tuning pass for the three inactive courses, and fix overshoot teleports.
+
+### Final tuning pass: no further course can pass
+
+The pass was a search, not a hand retune, run on the measured 1440 and 1280 fixtures with the production `validateCourse` rules: witnesses, timing windows, tiers, 12 px clearance and isolation.
+
+- **Necessary condition, every ledge position.** A course's first ledge must link to the lane entry in both directions, and its last ledge to the lane exit, at the course's tier. For each of launch-pad, cool-down and timeline-rungs, every ledge x on the 8 px content grid was tried at every y in 2 px steps, with three widths from the tier minimum up.
+- **Timeline rungs.** More than 1,300 variants: rung width 48/56/64, max rise 48–96, column gap 8–64, inset 12–40, first rung in the inner or outer column, an optional lead-in rung, and both gutter-zone definitions (the implemented keep-out span and the spec's section span).
+
+Nothing validated. The blueprints are unchanged, and the active set is still **stepping-stones, grid-run and precision-ledges at 1440 and 1280, and none at 1024-overlay or 768-classic**. AC1 ("all six at 1440/1280") is not met. The exact reasons, measured on the fixtures:
+
+| Course | 1440 | 1280 |
+|---|---|---|
+| **launch-pad** (comfortable, max rise 48) | A jump's body rises 182.5 px above its takeoff line (apex 150.5 + body 32). Clearing the Hero action row (bottom 713.02) by 12 px means every climb must take off at y ≥ 907.52. The lane entry `helper-1-1` is at 857.60, so the climb back to it is ≥ 49.92 px. A 1.92 px step up can't be walked, because the physics have no step-up. 0 ledge positions link to either end. | The Hero floor ends at 850.78, but the minimum takeoff is 697.97 + 12 + 182.5 = 892.47, so no jump fits at all. 0 positions at either end. |
+| **cool-down** (comfortable) | Exit end: the exit lane ledge `helper-8-8` (5735.9) is ≥ 63.6 px below any ledge line the band allows (zone bottom 5672.3). Entry end: the minimum takeoff under the Experience keep-outs is 5621.8, which is 99.5 px below the entry `helper-8-6` (5522.3). 0 positions at either end. | Same geometry, shifted by 100 px: 0 positions. |
+| **timeline-rungs** (medium) | Rung-to-rung edges can be made to prove: a 48 px column gap turns every drop into a plain walk-off. The entry link can't. With the implemented keep-out span, the spec-aligned first rung (the first timeline entry top, 5005) sits 90 px *above* the lane entry `helper-8-2` (5095), under `helper-8-1` (4988.2) and the Experience checkpoint. In every variant the descent back to the entry either lands on the second rung or climbs onto those ledges, so there's no bidirectional witness. With the spec's section span, the entry becomes the Experience checkpoint. That is precision-ledges' exit, so the two courses' corridors meet at that shared ledge, which §3.6.2 isolation forbids. | No zone: the gutter is 104.5 px, but two 48 px medium rungs, an 8 px gap and 12 px clearance need 116. |
+
+The keep-out-span gutter zone stays as implemented. Switching to the section span doesn't make the course pass, so the change would buy nothing.
+
+### Local recovery for course overshoots
+
+Spec §3.5 now includes: when `outsidePlayablePath` fires after a **jump that took off from a course ledge** (catch floors included), the body returns to that ledge at its takeoff x instead of the checkpoint. **Walking** off anything, and jumps from backbone surfaces, keep checkpoint recovery. `takeoffOf(before, after)` records a takeoff only when a grounded body starts rising, and landing clears it. `courseRecovery(world, takeoff, tuning)` returns the restored body, or `null` to fall back to the checkpoint. `game-session.tsx` tracks the takeoff each physics step and clears it whenever the body is placed by validation or navigation. No physics or tuning changed.
+
+Geometry alone couldn't fix this. The worst case, holding ← through the reverse climb from precision u1 onto the 12 px lane ledge, lands in the gutter, where the zone rules allow no course ledge. A simulation sweep also found that overshoots from a course's lane entry/exit ledges never escape, so a rule scoped to course ledges covers every case.
+
+**Tests (RED, then GREEN).** Four new world tests:
+
+- The precision u1 lane-climb overshoot escapes and is restored on u1 at its takeoff x, inside the playable path (1440 and 1280).
+- Walking right off the grid-run catch floor escapes with no takeoff and keeps checkpoint recovery. A backbone takeoff, or a takeoff when no course is active, also returns `null`.
+- `takeoffOf` records jumps only: not walk-offs, and not airborne bodies.
+- A sweep over every active course edge at 1440/1280 (three takeoff x values × held arrow 0–192 frames) checks that every escape recovers onto its takeoff ledge.
+
+With `courseRecovery` forced to `null`, the first and last tests fail. `npm run test:game`: 145 passed, 0 failed. `tsc`, `eslint` (repo sources), `npm run build` and `git diff --check`: all clean.
+
+**Browser (headless Chrome, trusted input, temporary read-only hook, since removed):**
+
+| Case | Result |
+|---|---|
+| Precision u1, ← held 140 frames through the lane climb | **Local.** `repositioning` → `playing` on `course-precision-ledges-u1` at the takeoff x (194.5). Restaged 213 px; before the fix this was 1,449 px to the Projects checkpoint. The Projects checkpoint stayed active. |
+| Precision rest, → held 132 frames past the catch floor's end | **Local.** Restored on `course-precision-ledges-rest` at 612.5 (the takeoff). |
+| Walking right off the grid-run catch floor | **Checkpoint, unchanged.** Respawned on the Tech Stack checkpoint. Auto-repeats of the still-held key were ignored (x stayed 124.5), and a fresh press moved again. |
+| Missed challenge jumps (under/over) | Unchanged. Every variant that can reach the catch floor landed on it in `playing`, then got back in one easy or comfortable edge. |
+| Journeys, 1440 and 1280, forward and reverse | **Pass.** Six checkpoints in order with one flag each, and all three active courses traversed in both directions. Forward legs had 10 and 9 reveal pauses, each resumed explicitly. The reverse legs had none. |
+
 ## Traversal courses: real-browser acceptance (2026-09-24, Claude Code)
 
 This is Task 10 of the traversal plan, run at commit 49ebbad. No product code changed.
@@ -44,7 +90,7 @@ On this machine, headless Chrome reports `prefers-reduced-motion: reduce` by def
 
 **Regression surface also re-run.** Production chunks: 10 before consent, 10 with the dialog open, 11 after Continue. With overlay scrollbars at 768 and 1023, Continue ended at **Larger window required**, with no HUD, the marker cleared, and focus on the trigger. At 1440, a wheel event and PageDown each paused without auto-resume, and Resume returned to play.
 
-**Hold-through overshoots (open, needs a decision).** The §3.5 catch check in `validateCourse` covers the timing sweep's failing presses, and those always steer onto the target after the press. A player who instead keeps holding the arrow past the target can leave the course. This was measured exhaustively in simulation with production `step()` (takeoff x in 2 px steps × hold 0–200 frames), with identical results at 1440 and 1280:
+**Hold-through overshoots (resolved 2026-09-25 by local recovery; see the section above).** The §3.5 catch check in `validateCourse` covers the timing sweep's failing presses, and those always steer onto the target after the press. A player who instead keeps holding the arrow past the target can leave the course. This was measured exhaustively in simulation with production `step()` (takeoff x in 2 px steps × hold 0–200 frames), with identical results at 1440 and 1280:
 
 - `precision-ledges` u1 → lane ledge `helper-7-1`. This is the challenge-tier running rise climbed on the way back up. Holding ← carries the body past the 12 px lane ledge into the gutter (4,396 of 5,656 variants). Live, this triggered checkpoint recovery to the Projects checkpoint, a 1,449 px jump. Undershoots land back on u1.
 - Medium edges. Precision p1→u1 escapes or drops to the Experience checkpoint. rest→p2 and catch→p2 escape past the catch floor's right end. Grid-run u2→u1 can drop to the Projects checkpoint.
