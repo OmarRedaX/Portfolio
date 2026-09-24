@@ -218,6 +218,15 @@
   background: repeating-linear-gradient(90deg, currentColor 0 8px, transparent 8px 14px);
 }
 
+/* Ledges are painted with backgrounds, which forced colors would replace with
+   Canvas; keep them, in the system text color, so the route stays visible. */
+@media (forced-colors: active) {
+  .platform[data-kind] {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+}
+
 .flag {
   position: absolute;
   color: var(--checkpoint-inactive);

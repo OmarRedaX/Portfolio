@@ -21,6 +21,15 @@ Nothing validated. The blueprints are unchanged, and the active set is still **s
 
 The keep-out-span gutter zone stays as implemented. Switching to the section span doesn't make the course pass, so the change would buy nothing.
 
+### Final whole-branch review (d52a498..HEAD)
+
+One important issue, fixed: **ledges were invisible under forced colors**. Game ledges are painted with `background`, and forced colors replaced it with Canvas. Headless Chrome with `forced-colors: active` measured every ledge's background as `rgb(0, 0, 0)` on an `rgb(0, 0, 0)` page, so Game Mode couldn't be played in Windows High Contrast. The base design had the same defect, and Task 9 had deferred it. A `@media (forced-colors: active)` rule now keeps the ledges (`forced-color-adjust: none`) and draws them in `CanvasText`. Measured again: base, challenge and catch ledges are `rgb(255, 255, 255)` on black, and the dashed catch pattern is kept. Without forced colors the values are unchanged (#6fa8c7, #8fc0da, #a99e8d). Screenshots: `t10-forced-{active,none}-hero.png`.
+
+Minor, not changed:
+- The first `buildWorld` at 1440/1280 takes ~360–390 ms on the main thread. It runs only while play is already paused for a layout change.
+- A redundant `.trigger[aria-disabled="true"]:hover` border rule, from Task 1.
+- A second `visible()` call in the keep-out branch of `readGeometry`, from Task 2.
+
 ### Local recovery for course overshoots
 
 Spec §3.5 now includes: when `outsidePlayablePath` fires after a **jump that took off from a course ledge** (catch floors included), the body returns to that ledge at its takeoff x instead of the checkpoint. **Walking** off anything, and jumps from backbone surfaces, keep checkpoint recovery. `takeoffOf(before, after)` records a takeoff only when a grounded body starts rising, and landing clears it. `courseRecovery(world, takeoff, tuning)` returns the restored body, or `null` to fall back to the checkpoint. `game-session.tsx` tracks the takeoff each physics step and clears it whenever the body is placed by validation or navigation. No physics or tuning changed.
