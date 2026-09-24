@@ -1,5 +1,63 @@
 # Game Mode rendered-layout validation
 
+## Traversal courses: real-browser acceptance (2026-09-24, Claude Code)
+
+This is Task 10 of the traversal plan, run at commit 49ebbad. No product code changed.
+
+**Commands.** `npm run test:game`: 141 passed, 0 failed (4.3 s). `npx tsc --noEmit --incremental false`: exit 0. `npm run lint`: exit 0. `npm run build`: exit 0 in 24 s (compile 7.2 s, TypeScript 5.9 s, 13 static pages in 1.6 s). `git diff --check`: clean.
+
+**Method.** Headless Chrome was driven over CDP with trusted `Input.dispatchKeyEvent` key-down, auto-repeat and key-up events, and trusted mouse events. The entry-hover checks and chunk counts ran on the production build (`next start`). The gameplay cases ran on the shared `next dev` server with a temporary read-only `window.__gameDebug` hook in `game-session.tsx`, which has since been removed. The hook exposed the world, body and session state.
+
+A throwaway closed-loop driver made the journeys. It planned each edge from the standing avatar with the compiled production `step()`. Because velocity is instantaneous, the approach run doesn't matter. The driver only accepted a plan that still succeeded with ±6 px takeoff error and 2–4 frames of input latency. It then walked to the takeoff, pressed Space as a trusted key, and steered with the witness rule. Every reveal pause was resumed with a trusted click on **Resume Game**.
+
+On this machine, headless Chrome reports `prefers-reduced-motion: reduce` by default. Motion cases therefore emulate `no-preference`.
+
+**Active courses** are the same live and in the fixtures, and match the Task 8 table.
+
+| Configuration | Active | `buildWorld` (first call, measured fixture) |
+|---|---|---|
+| 1440 (classic scrollbar) | stepping-stones, grid-run, precision-ledges | 387 ms, 97 surfaces |
+| 1280×800 | stepping-stones, grid-run, precision-ledges | 363 ms, 97 surfaces |
+| 1100 (after a live resize) | grid-run | not measured |
+| 1024 overlay | none | 48 ms, 80 surfaces |
+| 768 classic | none | 63 ms, 94 surfaces |
+
+`maxSurfaces` is 160. The blueprints and per-edge windows are unchanged from the Task 8 section below: stepping-stones u1/u2/u3/l1, grid-run u1/u2/rest/catch(600), precision-ledges u1/p1/rest/p2/catch(680), with launch-pad, timeline-rungs and cool-down as recorded there. Tier floors are also unchanged: comfortable 36/96/48/48, easy 24/64/96/80, medium 18/48/128/96, challenge 12/40/176/112 (window frames / min width / max gap / max rise).
+
+**Browser matrix (observed):**
+
+| Case | Result |
+|---|---|
+| Forward Hero→Contact, 1440 | **Pass.** 85 edges. Checkpoints were reached in order: About, Tech Stack, Projects, Experience, Contact. Exactly one active flag at each. All three active courses were traversed along their full entry→exit chains. There were 10 reveal pauses, each resumed explicitly. |
+| Forward, 1024 overlay | **Pass.** 67 edges, six checkpoints in order, one flag each. No course is active, as in Task 8. |
+| Reverse Contact→Hero, 1440 | **Pass.** 62 edges. Checkpoints in reverse order, one flag each. All three courses were climbed back along their reversed chains. No dead ends and no pauses. |
+| 1280×800 forward | **Partial.** Six checkpoints in order, one flag each, and all *three* active courses traversed. A reveal pause fired just before a precision-ledges takeoff; footing on `course-precision-ledges-u1` survived revalidation and the jump then landed. **"All six courses active" is not met.** AC1 is still open (see Task 8). |
+| 768 classic | **Pass.** Game Mode is available and plays: forward journey complete, six checkpoints, one flag each. No active courses, matching Task 8. |
+| Missed challenge jumps, 1440 | **Pass for the four row-to-rest edges (grid-run and precision-ledges, u2/p1 → rest and back).** Each under- and over-shot landed on the course's catch floor. The phase stayed `playing` and the largest movement between polls was 13.2 px (no teleport). The avatar was then driven back to the course's u1 ledge (an approach-side chain ledge) in one easy (grid-run) or comfortable (precision) edge. A forward overshoot of u2→rest or p1→rest is physically impossible: the longest jump still lands on the rest ledge. **Gap: see "Hold-through overshoots" below.** |
+| Deliberate escape | **Pass.** Walking right off the grid-run catch floor left the course. The avatar was respawned on the active Tech Stack checkpoint and stayed in `playing`. While the key was still held, further auto-repeat events didn't move it (x stayed 124.5). A fresh press moved it again. |
+| Held input | **Pass.** 2.5 s of held Space with auto-repeat on grid-run u2 (a challenge ledge) gave one jump, landing back on u2 with scrollY unchanged. Held → measured 239.1 px/s. |
+| Resize on a course ledge | **Pass.** Standing on stepping-stones u2 at 1440, the window was resized to 1100. Play paused as **Game Mode paused.** The ledge no longer exists at 1100 (only grid-run is active there), so the avatar was restaged on the About checkpoint. Still paused 4 s later (no auto-resume). **Resume Game** was enabled and returned to `playing`, and ← then moved the avatar. |
+| Reveal/hover | **Pass.** A pointer sweep across the Tech Stack cards above grid-run, and across the project cards (hover lift) above precision-ledges, left the world version unchanged. Play continued on the course ledge. Reveal starts still pause as before; every journey above shows them. |
+| Navigation | **Pass.** View Work (hint "Press Enter · View Work") went to `#projects` and landed on the Projects checkpoint with one flag. Hero Contact went to `#contact` and landed on the Contact checkpoint with one flag. Quick Bite Case Study went to `/work/quick-bite` and removed the game DOM and the `data-game-mode` marker. Core Service (`target="_blank"`) opened a real GitHub tab and the portfolio paused as **Paused while the page is out of focus.** After that tab closed it showed **Game Mode paused.**, with no auto-resume. |
+| Themes | **Pass.** The live world rendered 66 base, 7 challenge and 2 catch ledges. Contrast against the page background, dark / light: base `--accent` 7.53 / 6.63, challenge `--accent-strong` 9.97 / 10.39, catch `--foreground-muted` 7.40 / 5.39. The avatar's hoodie uses `--accent` (same values) and its face and legs `--foreground` (16.74 / 16.29). |
+| Entry hover (production build) | **Pass in both themes.** The trigger and `hero-actions` rects were identical before hover, during hover and after 400 ms. When engaged, the `::before` transform was `matrix(1, 0, -0.1405, 1, 0, -2)` and peek opacity was 1. With reduced motion the transform was `none` and peek opacity 1. With forced colors the peek was `display: none`. Resting on the top-left edge for 2 s gave 0 `mouseover`/`mouseout` and `:hover` held throughout. Tabbing showed the engaged state with focus-visible, an unskewed 2 px solid outline, and a button transform of `none`; Enter opened the dialog. During a session the trigger is `aria-disabled` and hover isn't engaged (`none`, peek 0). |
+
+**Regression surface also re-run.** Production chunks: 10 before consent, 10 with the dialog open, 11 after Continue. With overlay scrollbars at 768 and 1023, Continue ended at **Larger window required**, with no HUD, the marker cleared, and focus on the trigger. At 1440, a wheel event and PageDown each paused without auto-resume, and Resume returned to play.
+
+**Hold-through overshoots (open, needs a decision).** The §3.5 catch check in `validateCourse` covers the timing sweep's failing presses, and those always steer onto the target after the press. A player who instead keeps holding the arrow past the target can leave the course. This was measured exhaustively in simulation with production `step()` (takeoff x in 2 px steps × hold 0–200 frames), with identical results at 1440 and 1280:
+
+- `precision-ledges` u1 → lane ledge `helper-7-1`. This is the challenge-tier running rise climbed on the way back up. Holding ← carries the body past the 12 px lane ledge into the gutter (4,396 of 5,656 variants). Live, this triggered checkpoint recovery to the Projects checkpoint, a 1,449 px jump. Undershoots land back on u1.
+- Medium edges. Precision p1→u1 escapes or drops to the Experience checkpoint. rest→p2 and catch→p2 escape past the catch floor's right end. Grid-run u2→u1 can drop to the Projects checkpoint.
+
+Every recovery worked, and there was no soft-lock. But acceptance criterion 4 ("no teleport") doesn't hold for these inputs. Fixing it means changing the §3.5 rule (validate hold-through variants) and/or the blueprint geometry: a catch floor can't extend into the lane or gutter. That would probably drop precision-ledges, so it is left for the user alongside AC1.
+
+**Not verified here.** The *launch-pad*, *timeline-rungs* and *cool-down* courses are inactive at every width, so they were never played. A hold-through overshoot was driven live only for precision u1 → lane; the other listed edges come from simulation.
+
+**Screenshots** (git-ignored, `.superpowers/sdd/game-mode-traversal-implementation-plan/t10/`):
+- `t10-entry-{dark,light}-{rest,hover,reduced-hover,forced-hover,focus,dialog,active-hover}.png`
+- `t10-journey-{1440,1280,1024-overlay,768-classic}-forward.png` and `t10-journey-1440-reverse.png`
+- `t10-theme-{dark,light}-grid-run.png`, `t10-nav-view-work-landing.png`, `t10-nav-contact-landing.png`, `t10-resize-1100-paused.png`
+
 ## Drafted-ledge presentation (2026-09-24, Claude Code)
 
 Traversal plan Task 9. Game ledges are drawn as a 2px line with 1×6px end ticks below it. Challenge-course ledges use `--accent-strong` with a 135° hatch below the line; catch floors use a dashed `--foreground-muted` line; every other ledge, backbone included, uses `--accent`. Headless Chrome drove the shared `next dev` server at 1440×900. It started Game Mode through the trigger and the dialog in each theme, then read the tokens with `getComputedStyle`:
