@@ -9,8 +9,8 @@ const box = (x: number, y: number, width: number, height: number): Rect => ({
 });
 
 // A synthetic 1440 px homepage (clientWidth 1425, content 184–1248) with round
-// numbers. About's last keep-out ends at 1780 and the Tech Stack heading starts
-// at 2036, a 256 px band; every other section follows the measured 1440 layout.
+// numbers. About's last keep-out ends at 1740 and the Tech Stack heading starts
+// at 2036, a 296 px band; every other section follows the measured 1440 layout.
 export function bandFixture(): GeometrySnapshot {
   const sectionBounds: Record<SectionId, Rect> = {
     hero: box(0, 124, 1425, 828),
@@ -59,7 +59,7 @@ export function bandFixture(): GeometrySnapshot {
       contactForm,
     ],
     keepouts: [
-      box(184, 1596, 1064, 184),
+      box(184, 1596, 1064, 144),
       box(184, 2148, 516, 222),
       box(732, 2148, 516, 222),
       box(184, 2394, 516, 222),
@@ -90,10 +90,10 @@ export const bandCourse: CourseBlueprint = {
   tier: "challenge",
   layout: "ledges",
   ledges: [
-    { id: "d1", x: 0, y: { top: 104 }, width: 48 },
-    { id: "u1", x: 96, y: { bottom: 48 }, width: 64 },
-    { id: "u2", x: 272, y: { bottom: 48 }, width: 48 },
-    { id: "rest", x: 464, y: { bottom: 48 }, width: 112 },
-    { id: "catch", x: 48, y: { bottom: 0 }, width: 560, catch: true },
+    { id: "d1", x: 0, y: { top: 144 }, width: 96 },
+    { id: "u1", x: 128, y: { bottom: 48 }, width: 64 },
+    { id: "u2", x: 304, y: { bottom: 48 }, width: 48 },
+    { id: "rest", x: 496, y: { bottom: 48 }, width: 112 },
+    { id: "catch", x: 0, y: { bottom: 0 }, width: 640, catch: true },
   ],
 };

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   blueprints,
   compileCourse,
+  courseSpan,
   edgeTier,
   findZone,
   tierOrder,
@@ -24,7 +25,7 @@ import type {
 import { replay } from "../../lib/game/witness";
 import { buildWorld } from "../../lib/game/world";
 import { bandCourse, bandFixture } from "./fixtures/band";
-import { measuredHomepage } from "./fixtures/rendered-homepage";
+import { measuredHomepage, type MeasuredViewport } from "./fixtures/rendered-homepage";
 
 const tuning: Tuning = {
   step: 1 / 120,
@@ -46,6 +47,8 @@ const surf = (id: string, x: number, width: number, y: number): Surface => ({
   width,
   checkpoint: false,
 });
+
+const lane = (x: number, width = 32) => ({ x, width });
 
 const blueprintById = (id: CourseId): CourseBlueprint =>
   blueprints.find((blueprint) => blueprint.id === id)!;
@@ -71,33 +74,64 @@ test("band zone sits between section N content and section N+1 heading, lane-sid
     blueprintById("stepping-stones"),
     bandFixture(),
     1440,
-    120,
+    lane(120),
     tuning,
   )!;
-  // About's keep-outs end at 1780 (+12); the Tech Stack heading starts at 2036 (−12).
-  // X runs from the lane at 120 to the content right edge at 1248.
-  assert.deepEqual(zone.rect, { x: 120, y: 1792, width: 1128, height: 232 });
+  // About's keep-outs end at 1740 (+12); the Tech Stack heading starts at 2036 (−12).
+  // X runs from the lane's content side (120 + 32) to the content right edge at 1248.
+  assert.deepEqual(zone.rect, { x: 152, y: 1752, width: 1096, height: 272 });
   assert.equal(zone.laneSide, "left");
   assert.equal(zone.contentLeft, 184);
 });
 
 test("the cool-down band is the one above Contact, ending at Contact's first content", () => {
-  const zone = findZone(blueprintById("cool-down"), bandFixture(), 1440, 120, tuning)!;
+  const zone = findZone(
+    blueprintById("cool-down"),
+    bandFixture(),
+    1440,
+    lane(120),
+    tuning,
+  )!;
   // Experience entries end at 5504 (+12); Contact's column starts at 5760 (−12).
-  assert.deepEqual(zone.rect, { x: 120, y: 5516, width: 1128, height: 232 });
+  assert.deepEqual(zone.rect, { x: 152, y: 5516, width: 1096, height: 232 });
 });
 
-test("a right-lane zone never extends past the visible page width", () => {
+test("a right-lane zone ends at the lane's content side", () => {
   const snapshot = bandFixture();
-  const zone = findZone(blueprintById("stepping-stones"), snapshot, 1440, 1400, tuning)!;
+  const zone = findZone(
+    blueprintById("stepping-stones"),
+    snapshot,
+    1440,
+    lane(1300),
+    tuning,
+  )!;
   assert.equal(zone.laneSide, "right");
   assert.equal(zone.rect.x, 184);
-  assert.equal(zone.rect.x + zone.rect.width, snapshot.sectionBounds.about.width);
+  assert.equal(zone.rect.x + zone.rect.width, 1300);
+});
+
+test("course offsets start at the lane's content side, whatever the lane's width", () => {
+  const bp = blueprintById("stepping-stones");
+  const snapshot = bandFixture();
+  const compile = (x: number, width: number) =>
+    compileCourse(
+      bp,
+      findZone(bp, snapshot, 1440, lane(x, width), tuning)!,
+      snapshot,
+      tuning,
+    );
+  assert.deepEqual(compile(120, 32), compile(140, 12));
 });
 
 test("hero floor runs from the Hero action row down to the Hero bottom", () => {
-  const zone = findZone(blueprintById("launch-pad"), bandFixture(), 1440, 120, tuning)!;
-  assert.deepEqual(zone.rect, { x: 120, y: 725, width: 1128, height: 227 });
+  const zone = findZone(
+    blueprintById("launch-pad"),
+    bandFixture(),
+    1440,
+    lane(120),
+    tuning,
+  )!;
+  assert.deepEqual(zone.rect, { x: 152, y: 725, width: 1096, height: 227 });
 });
 
 test("gutter zone requires two lanes and is null at 1024", () => {
@@ -106,29 +140,49 @@ test("gutter zone requires two lanes and is null at 1024", () => {
       blueprintById("timeline-rungs"),
       measuredHomepage("1024-overlay").snapshot,
       1024,
-      0,
+      lane(0),
       tuning,
     ),
     null,
   );
 });
 
-test("gutter zone spans viewport edge to content left, so 1280 has two lanes", () => {
-  const { snapshot, width } = measuredHomepage("1280");
-  const zone = findZone(blueprintById("timeline-rungs"), snapshot, width, 56, tuning)!;
+test("gutter zone spans viewport edge to content left and needs room for the clearance", () => {
+  const wide = measuredHomepage("1440");
+  const zone = findZone(
+    blueprintById("timeline-rungs"),
+    wide.snapshot,
+    wide.width,
+    lane(56),
+    tuning,
+  )!;
   assert.equal(zone.rect.x, 0);
-  assert.equal(zone.rect.width, snapshot.sectionAnchors.hero.x);
+  assert.equal(zone.rect.width, wide.snapshot.sectionAnchors.hero.x);
+  // 1280's 104.5 px gutter is narrower than two 48 px rungs, their gap and the clearance.
+  const narrow = measuredHomepage("1280");
+  assert.ok(narrow.snapshot.sectionAnchors.hero.x < 2 * 48 + 8 + 12);
+  assert.equal(
+    findZone(
+      blueprintById("timeline-rungs"),
+      narrow.snapshot,
+      narrow.width,
+      lane(56),
+      tuning,
+    ),
+    null,
+  );
 });
 
 test("compilation mirrors for a right lane, snaps to 8px from content left, and is deterministic", () => {
   const bp = blueprintById("stepping-stones");
   const snapshot = bandFixture();
-  const zoneLeft = findZone(bp, snapshot, 1440, 120, tuning)!;
-  const zoneRight = findZone(bp, snapshot, 1440, 1256, tuning)!;
+  const zoneLeft = findZone(bp, snapshot, 1440, lane(120), tuning)!;
+  const zoneRight = findZone(bp, snapshot, 1440, lane(1256), tuning)!;
   assert.equal(zoneRight.laneSide, "right");
   const left = compileCourse(bp, zoneLeft, snapshot, tuning)!,
     right = compileCourse(bp, zoneRight, snapshot, tuning)!;
-  for (const s of [...left, ...right]) assert.equal((s.x - zoneLeft.contentLeft) % 8, 0);
+  for (const s of [...left, ...right])
+    assert.equal(Math.abs((s.x - zoneLeft.contentLeft) % 8), 0);
   assert.deepEqual(
     left.map((s) => s.width),
     right.map((s) => s.width),
@@ -148,7 +202,7 @@ test("compilation mirrors for a right lane, snaps to 8px from content left, and 
 test("a zone too small for its blueprint rejects instead of squeezing", () => {
   const bp = blueprintById("stepping-stones");
   const snapshot = bandFixture();
-  const zoneLeft = findZone(bp, snapshot, 1440, 120, tuning)!;
+  const zoneLeft = findZone(bp, snapshot, 1440, lane(120), tuning)!;
   assert.equal(
     compileCourse(
       bp,
@@ -163,7 +217,7 @@ test("a zone too small for its blueprint rejects instead of squeezing", () => {
 test("rungs align to Experience keep-out tops and alternate lanes", () => {
   const { snapshot, width } = measuredHomepage("1440");
   const bp = blueprintById("timeline-rungs");
-  const zone = findZone(bp, snapshot, width, 120, tuning)!;
+  const zone = findZone(bp, snapshot, width, lane(120), tuning)!;
   const rungs = compileCourse(bp, zone, snapshot, tuning)!;
   const experience = snapshot.sectionBounds.experience;
   const tops = snapshot.keepouts
@@ -183,6 +237,63 @@ test("rungs align to Experience keep-out tops and alternate lanes", () => {
   }
 });
 
+const measuredBackbone = (viewport: "1440" | "1280") => {
+  const { snapshot, width, usableHeight } = measuredHomepage(viewport);
+  const built = buildWorld(snapshot, tuning, { width, usableHeight }, 1, {
+    courses: false,
+  });
+  assert.ok(built.ok);
+  const { x, width: laneWidth } = built.world.surfaces.find(
+    (s) => s.id === "helper-1-1",
+  )!;
+  return { snapshot, width, world: built.world, laneX: x, lane: lane(x, laneWidth) };
+};
+
+test("backbone button ledges bound a zone like content does", () => {
+  const { snapshot, width, world, lane: backboneLane } = measuredBackbone("1440");
+  const ledges = world.surfaces.filter(
+    (s) => s.id.startsWith("action-") || s.id.startsWith("branch-"),
+  );
+  const top = (id: CourseId) =>
+    findZone(blueprintById(id), snapshot, width, backboneLane, tuning, ledges)!.rect.y;
+  const terrace = (prefix: string) =>
+    Math.max(...ledges.filter((s) => s.id.startsWith(prefix)).map((s) => s.y));
+  assert.equal(top("launch-pad"), terrace("branch-hero-actions") + 12);
+  assert.equal(
+    top("precision-ledges"),
+    terrace("branch-project-fresh-cart-actions") + 12,
+  );
+});
+
+test("a course enters from the first lane surface whose standing body is inside its zone", () => {
+  const { snapshot, width, world, laneX, lane: backboneLane } = measuredBackbone("1440");
+  const zone = findZone(
+    blueprintById("stepping-stones"),
+    snapshot,
+    width,
+    backboneLane,
+    tuning,
+  )!;
+  const span = courseSpan(world, zone, laneX, tuning)!;
+  assert.equal(span.entry.id, "helper-2-7");
+  assert.ok(span.entry.y - tuning.bodyHeight >= zone.rect.y);
+  assert.ok(
+    world.surfaces.some(
+      (s) =>
+        s.x === laneX && s.y < span.entry.y && s.y - tuning.bodyHeight >= zone.rect.y,
+    ) === false,
+  );
+});
+
+test("rungs keep the course clearance from the content edge", () => {
+  const { snapshot, width, lane: backboneLane } = measuredBackbone("1440");
+  const bp = blueprintById("timeline-rungs");
+  const zone = findZone(bp, snapshot, width, backboneLane, tuning)!;
+  const rungs = compileCourse(bp, zone, snapshot, tuning)!;
+  for (const rung of rungs)
+    assert.ok(rung.x + rung.width <= zone.contentLeft - 12, rung.id);
+});
+
 type Fixture = {
   snapshot: GeometrySnapshot;
   world: World;
@@ -200,7 +311,7 @@ function baseFixture(): Fixture {
     snapshot: bandFixture(),
     world: built.world,
     blueprint: bandCourse,
-    zone: findZone(bandCourse, snapshot, 1440, 120, tuning)!,
+    zone: findZone(bandCourse, snapshot, 1440, lane(120), tuning)!,
   };
 }
 
@@ -269,7 +380,7 @@ const cases: Array<[string, CourseRejection, (f: Fixture) => void]> = [
         id: "stray-link",
         label: "Stray",
         order: 99,
-        rect: { x: 400, y: f.zone.rect.y + 150, width: 40, height: 20 },
+        rect: { x: 460, y: f.zone.rect.y + 200, width: 40, height: 20 },
         enabled: true,
       });
     },
@@ -332,14 +443,15 @@ const cases: Array<[string, CourseRejection, (f: Fixture) => void]> = [
     },
   ],
   [
-    "a catch floor with a hole under a challenge gap",
+    "a catch floor too far below the run to climb back gently",
     "catch",
     (f) => {
-      f.blueprint = withLedges(f.blueprint, [
-        ...ledgesOf(f.blueprint).filter((ledge) => !ledge.catch),
-        { id: "catch-far", x: 448, y: { bottom: 0 }, width: 200, catch: true },
-        { id: "catch-near", x: 48, y: { bottom: 0 }, width: 304, catch: true },
-      ]);
+      f.blueprint = withLedges(
+        f.blueprint,
+        ledgesOf(f.blueprint).map((ledge) =>
+          ledge.catch || ledge.id === "d1" ? ledge : { ...ledge, y: { bottom: 88 } },
+        ),
+      );
     },
   ],
   [
@@ -347,7 +459,7 @@ const cases: Array<[string, CourseRejection, (f: Fixture) => void]> = [
     "graph",
     (f) => {
       const stray: Surface = {
-        id: "branch-stray",
+        id: "stray-ledge",
         section: "about",
         x: 1300,
         y: 1918,
@@ -410,4 +522,31 @@ test("an accepted course replaces the spanned helpers with bidirectional, replay
   assert.ok(Object.values(r.summary.edgeTiers).includes("challenge"));
   assert.ok(r.corridor.length > 0);
   assert.ok(elapsed < 50, `validateCourse took ${elapsed.toFixed(1)} ms`);
+});
+
+// Launch pad and cool-down cannot return to their entry within the comfortable
+// rise, timeline rungs cannot share the gutter with the backbone lane, and the
+// 1024/768 bands are shorter than one jump's headroom (docs/game-mode-validation.md).
+test("measured worlds activate the courses that fit, with challenge courses actually challenging", () => {
+  const expected: Record<MeasuredViewport, CourseId[]> = {
+    "1440": ["stepping-stones", "grid-run", "precision-ledges"],
+    "1280": ["stepping-stones", "grid-run", "precision-ledges"],
+    "1024-overlay": [],
+    "768-classic": [],
+  };
+  for (const v of Object.keys(expected) as MeasuredViewport[]) {
+    const { snapshot, width, usableHeight } = measuredHomepage(v);
+    const r = buildWorld(snapshot, tuning, { width, usableHeight }, 1);
+    assert.ok(r.ok, v);
+    assert.deepEqual(
+      r.world.courses.map((c) => c.id),
+      expected[v],
+      v,
+    );
+    for (const c of r.world.courses.filter((c) => c.tier === "challenge"))
+      assert.ok(
+        Object.values(c.edgeTiers).includes("challenge"),
+        `${v} ${c.id} is not actually challenging`,
+      );
+  }
 });

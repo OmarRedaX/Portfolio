@@ -1,5 +1,53 @@
 # Game Mode rendered-layout validation
 
+## Traversal course tuning (2026-09-24, Claude Code)
+
+Traversal plan Task 8, run against the measured fixtures with `buildWorld`. At first no blueprint validated anywhere. The stop gate triggered, and the user chose to change code under the unchanged rules (12px clearance, tier table, rhythm and catch rules, and every acceptance criterion). Four changes were made:
+
+- **Entry.** A course now enters from the first lane surface whose standing body is inside the zone. The old entry's body sat above the zone top, 4px from content left, so every edge touching it failed the 12px clearance.
+- **Button ledges bound zones.** Backbone action knots and terraces (`action-*`, `branch-*`) count as content when zones are measured. The Hero and Fresh Cart terraces had been lying across the top of their zones.
+- **Rung inset.** The inner rung column now ends 12px before content left, and a gutter needs `2 × laneWidth + 8 + 12` px.
+- **Lane-side origin.** Zones and blueprint x offsets start at the lane's content side (`lane.x + lane.width` for a left lane, `lane.x` for a right lane), not at `lane.x`. A snapshot taken before reveals settle builds its backbone on a 32px lane at 120.5 (at 1440) instead of the 12px lane at 162.5. Without this change, the pending-reveal world activated different courses from the settled one.
+
+**Active courses** (settled and pending-reveal snapshots agree at every width):
+
+| Configuration | Active |
+|---|---|
+| 1440 | stepping-stones, grid-run, precision-ledges |
+| 1280 | stepping-stones, grid-run, precision-ledges |
+| 1024-overlay | none |
+| 768-classic | none |
+
+Availability is unchanged at every width. `buildWorld` with courses takes 294–445ms at 1440/1280 in the probe (97 surfaces).
+
+**The binding measured constraint is jump headroom.** A jump's apex is 150.5px, so the body top rises 182.5px above its takeoff line. It must clear the content above by 12px, which the zone top already includes. It must also not cross the backbone lane ledge above the entry. So away from the lane, a jump can only take off from the bottom ~50px of a 233px band. Every active course is therefore a low run in that strip, with its catch floor or return row at the zone bottom.
+
+**Still rejected at 1440/1280 (AC1 not met; rules and target unchanged, pending a user decision):**
+
+- **launch-pad** (comfortable, Hero floor). At 1440 the zone is y 765–950.8 (185.8px), and the entry is helper-1-1 at 857.6. A jump needs to take off at y ≥ 725 + 182.5 = 907.5 to clear the Hero action row. To avoid crossing the Hero terrace line (y 753) it needs 935.5. So the climb back to the entry is ≥ 78px, over the comfortable limit of 48. At 1280 the zone is y 710–850.8 (140.8px). Every jump needs a takeoff ≥ 698 + 182.5 = 880.5 below the terrace, but the floor ends at 850.8. So no jump fits: every sweep lands on the Hero terrace or checkpoint-hero.
+- **cool-down** (comfortable, Experience→Contact band 5439.3–5672.3). The entry, helper-8-6 at 5522.3, is 83px below the zone top. A jump's lowest free takeoff is 5621.8, so the return climb is ≥ 99.6px. The best witnessed climb is 110px, which is challenge tier.
+- **timeline-rungs** (medium). At 1440 (gutter 0–184.5), the first rung sits at the first timeline entry top (5005), above the only valid entry (helper-8-2 at 5095). The inset inner rung column (120.5–168.5) shares its x range with the backbone lane, so rung r1 sits 16.8px under helper-8-1. The rungs also stand side by side, 8px apart, so drops between them overshoot (2-frame windows). At 1280 the gutter is 104.5px, less than the 116px two rungs need, so there is no zone.
+- **1024/768.** The bands are 181.8px and 130.6px, both shorter than the 182.5px one jump needs, so no band course validates. Launch-pad is also rejected there (witness), but that wasn't diagnosed separately. There is no gutter zone.
+
+**Per-edge timing windows** (frames at 1/120s, final surface set, identical at 1440 and 1280; "walk" = walk or drop):
+
+| Course | Edge | Tier | Window |
+|---|---|---|---|
+| stepping-stones | entry→u1 / u1→entry | easy | walk / 38 |
+| | u1↔u2, u2↔u3 | easy | 38, 38 / 38, 46 |
+| | u3↔l1, l1↔exit | comfortable | walk, 91 / walk |
+| grid-run | entry→u1 / u1→entry | easy | walk / 30 |
+| | u1→u2 / u2→u1 | medium | 30 / **22** |
+| | u2→rest / rest→u2 | challenge | **22** / 54 |
+| | rest↔catch, catch↔exit, catch→u1 | comfortable–easy | walk, 91, walk, 91 |
+| precision-ledges | entry→u1 / u1→entry (110.6px running rise) | challenge | walk / 46 |
+| | u1→p1 / p1→u1 | medium | 46 / **22** |
+| | p1→rest / rest→p1 | challenge | **22** / 50 |
+| | rest→p2 / p2→rest | medium | 50 / **22** |
+| | p2↔catch, catch↔exit, catch↔u1 | comfortable–medium | walk, 65, walk, 91 |
+
+Both challenge courses have 1–3 edges in [12, 24) frames: grid-run has 2 and precision-ledges has 3. Their challenge edges are separated by a rest ledge of at least 96px (grid-run's rest, precision's u1 and rest), and a single catch floor spans each run. None of the blueprints align ledge edges to the Tech Stack card grid. The column edges (700.5/724.5 at 1440) are not on the 8px lattice from content left, which the snapping allows.
+
 ## Traversal zone survey (2026-09-24, Claude Code)
 
 Traversal plan Task 3. Headless Chrome over CDP against the local `next dev` homepage. For each configuration, the page was scrolled to the bottom in 400px steps with a 300ms wait per step, then scrolled back to the top. `readGeometry(main)` was then read through a temporary `window.__gameSnapshot` hook, which was removed afterwards. Every capture reported `revealsSettled: true`, 8/8 surfaces, 13 targets, 8 obstacles and 13 keep-outs. The HUD height came from a started session: 111.59375px at every width, with the header bottom at 123.78125px. So `usableHeight` = visual height − 123.78 − 111.59. The snapshots are committed as `tests/game/fixtures/rendered-homepage.ts` (`measuredHomepage`).

@@ -79,11 +79,10 @@ export const blueprints: readonly CourseBlueprint[] = [
     tier: "easy",
     layout: "ledges",
     ledges: [
-      { id: "u1", x: 72, y: { top: 48 }, width: 96 },
-      { id: "u2", x: 232, y: { top: 64 }, width: 80 },
-      { id: "u3", x: 392, y: { top: 48 }, width: 96 },
-      { id: "l1", x: 312, y: { bottom: 56 }, width: 96 },
-      { id: "l2", x: 152, y: { bottom: 40 }, width: 96 },
+      { id: "u1", x: 20, y: { bottom: 32 }, width: 80 },
+      { id: "u2", x: 164, y: { bottom: 32 }, width: 80 },
+      { id: "u3", x: 308, y: { bottom: 32 }, width: 96 },
+      { id: "l1", x: 4, y: { bottom: 0 }, width: 400 },
     ],
   },
   {
@@ -93,11 +92,10 @@ export const blueprints: readonly CourseBlueprint[] = [
     tier: "challenge",
     layout: "ledges",
     ledges: [
-      { id: "u1", x: 72, y: { top: 56 }, width: 96 },
-      { id: "u2", x: 240, y: { top: 56 }, width: 64 },
-      { id: "u3", x: 424, y: { top: 40 }, width: 48 },
-      { id: "rest", x: 624, y: { top: 48 }, width: 112 },
-      { id: "catch", x: 48, y: { bottom: 48 }, width: 720, catch: true },
+      { id: "u1", x: 84, y: { bottom: 32 }, width: 64 },
+      { id: "u2", x: 260, y: { bottom: 32 }, width: 48 },
+      { id: "rest", x: 452, y: { bottom: 32 }, width: 112 },
+      { id: "catch", x: 4, y: { bottom: 0 }, width: 600, catch: true },
     ],
   },
   {
@@ -107,11 +105,11 @@ export const blueprints: readonly CourseBlueprint[] = [
     tier: "challenge",
     layout: "ledges",
     ledges: [
-      { id: "u1", x: 72, y: { top: 64 }, width: 96 },
-      { id: "p1", x: 272, y: { top: 64 }, width: 48 },
-      { id: "rest", x: 432, y: { top: 72 }, width: 104 },
-      { id: "p2", x: 648, y: { top: 40 }, width: 40 },
-      { id: "catch", x: 48, y: { bottom: 48 }, width: 704, catch: true },
+      { id: "u1", x: 20, y: { bottom: 48 }, width: 96 },
+      { id: "p1", x: 236, y: { bottom: 48 }, width: 48 },
+      { id: "rest", x: 428, y: { bottom: 48 }, width: 104 },
+      { id: "p2", x: 634, y: { bottom: 48 }, width: 48 },
+      { id: "catch", x: 4, y: { bottom: 0 }, width: 680, catch: true },
     ],
   },
   {
@@ -146,11 +144,15 @@ function actionRows(snapshot: GeometrySnapshot) {
     : snapshot.actionRows;
 }
 
-function contentOf(snapshot: GeometrySnapshot, section: SectionId): Rect[] {
+function contentOf(
+  snapshot: GeometrySnapshot,
+  section: SectionId,
+  ledges: readonly Rect[],
+): Rect[] {
   const bounds = snapshot.sectionBounds[section];
   return [
     snapshot.sectionAnchors[section],
-    ...[...snapshot.keepouts, ...snapshot.obstacles].filter((rect) =>
+    ...[...snapshot.keepouts, ...snapshot.obstacles, ...ledges].filter((rect) =>
       within(rect, bounds),
     ),
     ...actionRows(snapshot)
@@ -178,12 +180,18 @@ export function findZone(
   blueprint: CourseBlueprint,
   snapshot: GeometrySnapshot,
   viewportWidth: number,
-  laneX: number,
+  lane: { x: number; width: number },
   tuning: Tuning,
+  buttonLedges: readonly Surface[] = [],
 ): Zone | null {
   const content = contentEdges(snapshot);
-  const laneWidth = tuning.bodyWidth + 8;
-  const laneSide = laneX + laneWidth / 2 < viewportWidth / 2 ? "left" : "right";
+  const ledges = buttonLedges.map((s) => ({
+    x: s.x,
+    y: s.y - tuning.bodyHeight,
+    width: s.width,
+    height: tuning.bodyHeight,
+  }));
+  const laneSide = lane.x + lane.width / 2 < viewportWidth / 2 ? "left" : "right";
   const zone = (x: number, right: number, y: number, bottom: number): Zone | null =>
     right > x && bottom > y
       ? {
@@ -196,12 +204,12 @@ export function findZone(
       : null;
   const page = snapshot.sectionBounds[blueprint.section];
   const visibleRight = Math.min(viewportWidth, page.x + page.width);
+  // Offsets start at the lane's content side, so a wider or narrower lane
+  // moves the course with it instead of changing its geometry.
   const [x, right] =
-    laneSide === "left"
-      ? [laneX, content.right]
-      : [content.left, Math.min(visibleRight, laneX + laneWidth)];
+    laneSide === "left" ? [lane.x + lane.width, content.right] : [content.left, lane.x];
   const lowest = (section: SectionId) =>
-    Math.max(...contentOf(snapshot, section).map(bottomOf)) + courseClearance;
+    Math.max(...contentOf(snapshot, section, ledges).map(bottomOf)) + courseClearance;
 
   if (blueprint.zone === "hero-floor")
     return zone(x, right, lowest("hero"), bottomOf(snapshot.sectionBounds.hero));
@@ -213,7 +221,8 @@ export function findZone(
     const lower = sectionIds[upper + 1];
     if (upper < 0 || !lower) return null;
     const highest =
-      Math.min(...contentOf(snapshot, lower).map((rect) => rect.y)) - courseClearance;
+      Math.min(...contentOf(snapshot, lower, ledges).map((rect) => rect.y)) -
+      courseClearance;
     return zone(x, right, lowest(sectionIds[upper]), highest);
   }
 
@@ -222,7 +231,7 @@ export function findZone(
   if (!keepouts.length) return null;
   const [gutterX, gutterRight] =
     laneSide === "left" ? [0, content.left] : [content.right, visibleRight];
-  if (gutterRight - gutterX < 2 * blueprint.laneWidth + 8) return null;
+  if (gutterRight - gutterX < 2 * blueprint.laneWidth + 8 + courseClearance) return null;
   return zone(
     gutterX,
     gutterRight,
@@ -274,10 +283,16 @@ export function compileCourse(
     const lanes =
       zone.laneSide === "left"
         ? [
-            snap(rect.x + rect.width - blueprint.laneWidth, Math.floor),
-            snap(rect.x + rect.width - 2 * blueprint.laneWidth - 8, Math.floor),
+            snap(rect.x + rect.width - courseClearance - blueprint.laneWidth, Math.floor),
+            snap(
+              rect.x + rect.width - courseClearance - 2 * blueprint.laneWidth - 8,
+              Math.floor,
+            ),
           ]
-        : [snap(rect.x, Math.ceil), snap(rect.x + blueprint.laneWidth + 8, Math.ceil)];
+        : [
+            snap(rect.x + courseClearance, Math.ceil),
+            snap(rect.x + courseClearance + blueprint.laneWidth + 8, Math.ceil),
+          ];
     surfaces = heights.map((y, i) =>
       surface(`r${i + 1}`, lanes[i % 2], y, blueprint.laneWidth),
     );
@@ -388,18 +403,21 @@ export function validateCourse(
   const { world, snapshot, tuning, viewportWidth, laneX } = context;
   const reject = (reason: CourseRejection): CourseResult => ({ ok: false, reason });
 
-  const zone = findZone(blueprint, snapshot, viewportWidth, laneX, tuning);
+  const zone = findZone(
+    blueprint,
+    snapshot,
+    viewportWidth,
+    { x: laneX, width: world.surfaces.find((s) => s.x === laneX)?.width ?? 0 },
+    tuning,
+    world.surfaces.filter(isButtonLedge),
+  );
   const compiled = zone && compileCourse(blueprint, zone, snapshot, tuning);
   if (!zone || !compiled) return reject("zone");
 
-  // The entry's standing body starts at the zone top, so the first ledge is at
-  // most one helper spacing below it; the exit's line is at the zone bottom.
-  const lane = world.surfaces
-    .filter((surface) => surface.x === laneX)
-    .sort((a, b) => a.y - b.y);
-  const entry = lane.filter((s) => s.y - tuning.bodyHeight <= zone.rect.y + 8).at(-1);
-  const exit = entry && lane.find((s) => s.y > entry.y && s.y >= bottomOf(zone.rect) - 8);
-  const removed = entry && exit ? lane.filter((s) => s.y > entry.y && s.y < exit.y) : [];
+  const span = courseSpan(world, zone, laneX, tuning);
+  const entry = span?.entry;
+  const exit = span?.exit;
+  const removed = span?.removed ?? [];
   const removedIds = removed.map((s) => s.id);
 
   if (
@@ -664,6 +682,29 @@ export function validateCourse(
 }
 
 export type AcceptedCourse = Extract<CourseResult, { ok: true }>;
+
+export const isButtonLedge = (surface: Surface) =>
+  surface.id.startsWith("action-") || surface.id.startsWith("branch-");
+
+// The entry is the first lane surface whose standing body is inside the zone,
+// so the course clearance already holds against the content above it; the
+// exit's line is at the zone bottom.
+export function courseSpan(
+  world: World,
+  zone: Zone,
+  laneX: number,
+  tuning: Tuning,
+): { entry: Surface; exit: Surface; removed: Surface[] } | null {
+  const lane = world.surfaces
+    .filter((surface) => surface.x === laneX)
+    .sort((a, b) => a.y - b.y);
+  const entry = lane.find(
+    (s) => s.y - tuning.bodyHeight >= zone.rect.y && s.y <= bottomOf(zone.rect),
+  );
+  const exit = entry && lane.find((s) => s.y > entry.y && s.y >= bottomOf(zone.rect) - 8);
+  if (!entry || !exit) return null;
+  return { entry, exit, removed: lane.filter((s) => s.y > entry.y && s.y < exit.y) };
+}
 
 // Every checkpoint, action ledge, target ledge and course surface is reached
 // from the Hero checkpoint.
