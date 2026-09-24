@@ -55,6 +55,25 @@ export type GeometrySnapshot = {
   headerBottom: number;
   revealsSettled: boolean;
 };
+export type Tier = "comfortable" | "easy" | "medium" | "challenge";
+export type CourseId =
+  | "launch-pad"
+  | "stepping-stones"
+  | "grid-run"
+  | "precision-ledges"
+  | "timeline-rungs"
+  | "cool-down";
+export type CourseSummary = {
+  id: CourseId;
+  section: SectionId;
+  tier: Tier;
+  entryId: string;
+  exitId: string;
+  surfaceIds: string[];
+  catchIds: string[];
+  // Keyed by `${from}>${to}`.
+  edgeTiers: Record<string, Tier>;
+};
 export type Connection = { from: string; to: string; frames: Input[]; corridor: Rect[] };
 export type World = {
   version: number;
@@ -65,6 +84,7 @@ export type World = {
   targetLedges: Record<string, string>;
   obstacles: Rect[];
   envelope: Rect[];
+  courses: CourseSummary[];
 };
 export type Validation =
   | { ok: true; world: World; minUsableHeight: number }

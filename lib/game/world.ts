@@ -457,6 +457,7 @@ function attempt(
     targetLedges,
     obstacles: exclusions,
     envelope,
+    courses: [],
   };
 }
 
