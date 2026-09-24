@@ -29,8 +29,9 @@ Vercel) has not started. Full roadmap and acceptance criteria: `implementation-p
    design and PR work in later phases.
 
 `CLAUDE.md` carries the same guidance for Claude Code; keep the two in sync. No other
-hand-authored design guide exists in this repo. `README.md` is intentionally minimal and links
-back to that guide rather than duplicating it.
+hand-authored design guide exists in this repo. `README.md` is the human-facing
+overview (features, Game Mode, setup, env vars, structure); keep it current, and leave
+conventions and rules in these guides rather than duplicating them there.
 
 The Next.js agent-rules block at the bottom of this file is managed by `next dev`, which
 rewrites it in AGENTS.md whenever this file exists — leave it in place. Never write that block's
