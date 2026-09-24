@@ -132,6 +132,9 @@ the case-study page gets a functional scroll-progress indicator; forms use real 
 states (focus rings, loading/success/error). `prefers-reduced-motion: reduce` must disable
 all transform-based motion site-wide.
 
+Exception (Game Mode traversal spec, 2026-09-24): the Hero Game Mode trigger alone uses a
+decorative skew/lift + avatar peek on hover/focus; reduced motion shows a static state.
+
 ## Accessibility & Responsive (Phase 10)
 
 Fully keyboard-navigable, no keyboard traps, all interactive elements reachable and labeled.

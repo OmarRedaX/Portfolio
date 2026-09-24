@@ -4,6 +4,7 @@ import { Component, useCallback, useEffect, useId, useRef, useState } from "reac
 import type { ComponentType, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gameMode } from "@/content/game-mode";
+import { AvatarFigure } from "./avatar-figure";
 import type { GameSessionProps } from "./game-session";
 import styles from "./game-mode.module.css";
 
@@ -143,8 +144,13 @@ export function GameEntry(): React.JSX.Element {
           cancel.current?.focus({ preventScroll: true });
         }}
       >
-        <span className={styles.available}>{gameMode.entry}</span>
-        <span className={styles.keyboardRequired}>{gameMode.keyboardRequired}</span>
+        <span className={styles.triggerLabel}>
+          <span className={styles.available}>{gameMode.entry}</span>
+          <span className={styles.keyboardRequired}>{gameMode.keyboardRequired}</span>
+        </span>
+        <span className={styles.peek} aria-hidden="true">
+          <AvatarFigure />
+        </span>
       </button>
       <span className={styles.largerWindow}>{gameMode.largerWindow}</span>
       {message && (
