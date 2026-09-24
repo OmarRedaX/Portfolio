@@ -10,7 +10,7 @@ import type { Body, GeometrySnapshot, SessionEvent, SessionState, Tuning, World 
 import { spawn, step } from "@/lib/game/physics";
 import { createScrollCoordinator, followDelta } from "@/lib/game/scroll";
 import { createSession, ownsGameKey, restoreSupport, transition } from "@/lib/game/session";
-import { buildWorld, outsidePlayablePath, viewportSupportsRoute } from "@/lib/game/world";
+import { buildWorld, courseRecovery, outsidePlayablePath, takeoffOf, viewportSupportsRoute, type Takeoff } from "@/lib/game/world";
 import { GameView, type GameViewHandle } from "./game-view";
 
 export type GameSessionProps = { onExit: (reason?: "viewport") => void; trigger: HTMLButtonElement };
@@ -65,6 +65,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
     let lastTime = 0;
     let accumulator = 0;
     let jumpPressed = false;
+    let takeoff: Takeoff | null = null;
     let label: string | null = null;
     let selected: string | null = null;
     let painted: string | null = null;
@@ -136,15 +137,18 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
         const direction = (Number(held.has("ArrowRight")) - Number(held.has("ArrowLeft"))) as -1 | 0 | 1;
         const result = step(body.current, { direction, jumpPressed }, world.surfaces, tuning);
         jumpPressed = false;
+        takeoff = result.body.groundedOn ? null : (takeoffOf(body.current, result.body) ?? takeoff);
         body.current = result.body;
         accumulator -= tuning.step;
         if (result.landedOn && world.surfaces.some((surface) => surface.id === result.landedOn && surface.checkpoint) && state.checkpoint !== result.landedOn)
           send({ type: "CHECKPOINT", id: result.landedOn });
         if (outsidePlayablePath(body.current, world)) {
           const checkpoint = world.surfaces.find((surface) => surface.id === state.checkpoint);
-          if (!checkpoint) { send({ type: "VALIDATED", valid: false }); return; }
+          const landing = courseRecovery(world, takeoff, tuning) ?? (checkpoint && spawn(checkpoint, tuning));
+          takeoff = null;
+          if (!landing) { send({ type: "VALIDATED", valid: false }); return; }
           send({ type: "REPOSITION", owner: "recovery" });
-          body.current = spawn(checkpoint, tuning);
+          body.current = landing;
           paintStill();
           void reposition();
           return;
@@ -220,6 +224,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
       const landing = world.surfaces.find((surface) => surface.id === checkpoint);
       if (!landing) { send({ type: "VALIDATED", valid: false }); return false; }
       if (!landing.checkpoint) world = withDestinationCheckpoint(world, landing);
+      takeoff = null;
       if (!oldWorld) body.current = spawn(landing, tuning);
       else if (key !== previousWorldKey) body.current = restoreSupport(body.current, oldWorld.surfaces, world.surfaces, world.obstacles, innerWidth) ?? spawn(landing, tuning);
       previousWorldKey = key;
@@ -294,6 +299,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
         world = withDestinationCheckpoint(world, landing);
       }
       body.current = spawn(landing, tuning);
+      takeoff = null;
       send({ type: "CHECKPOINT", id: landing.id });
       focusHost.focus({ preventScroll: true });
       paintStill();

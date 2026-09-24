@@ -92,6 +92,7 @@ Each blueprint declares an *intended* tier. The validator *computes* each edge's
 
 - **Missed jumps are caught.** For challenge (and medium) edges, every *failing* variant from the timing sweep must land on a course or backbone surface. From that landing, the start of the challenge must be reachable in at most 2 comfortable or easy edges. An ordinary miss never triggers a checkpoint teleport.
 - **Deliberately leaving the course** (walking out of the zone past the catch floor) is unchanged: `outsidePlayablePath` → recovery to the active checkpoint. Course corridors and catch landings are added to the envelope.
+- **Overshoots recover locally** (added 2026-09-25, user decision). Holding the arrow past a jump's target can carry the body out of the zone where no catch floor can exist, for example past the 12 px lane ledge into the gutter. So when `outsidePlayablePath` fires after a jump that took off from a course ledge (catch floors included), the body returns to that ledge at the takeoff x instead of the checkpoint. Walking off anything, or a jump from a backbone surface, keeps checkpoint recovery.
 - There are no lives, health, score, penalties, or game over. Checkpoints stay one per section, so course ledges are never checkpoints. The green-flag rule is unchanged.
 - Same-page destination fallback (`destinationLanding`) never chooses a course ledge. It stays with checkpoints and backbone helpers.
 

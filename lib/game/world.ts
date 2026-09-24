@@ -613,6 +613,33 @@ export function viewportSupportsRoute(
   ).ok;
 }
 
+export type Takeoff = { id: string; x: number };
+
+// Walking off a surface never counts: only a jump from the ground starts rising.
+export function takeoffOf(before: Body, after: Body): Takeoff | null {
+  return before.groundedOn && !after.groundedOn && after.vy < 0
+    ? { id: before.groundedOn, x: before.x }
+    : null;
+}
+
+// Overshooting a jump that left a course ledge is an ordinary miss (spec 3.5):
+// it returns to where the jump left, not to the checkpoint. Walking out of a
+// course, or leaving from the backbone, keeps checkpoint recovery.
+export function courseRecovery(
+  world: World,
+  takeoff: Takeoff | null,
+  tuning: Tuning,
+): Body | null {
+  if (!takeoff || !world.courses.some((course) => course.surfaceIds.includes(takeoff.id)))
+    return null;
+  const surface = world.surfaces.find((s) => s.id === takeoff.id);
+  if (!surface) return null;
+  const body = spawn(surface, tuning);
+  if (surface.width <= tuning.bodyWidth) return body;
+  const x = Math.min(Math.max(takeoff.x, surface.x), surface.x + surface.width - tuning.bodyWidth);
+  return { ...body, x };
+}
+
 export function outsidePlayablePath(body: Body, world: World): boolean {
   if (world.envelope.some((rect) => !clearOf(bodyRect(body), rect))) return false;
   // A body falling toward a registered lower support remains on a recoverable descent.

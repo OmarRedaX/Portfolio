@@ -2,10 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildWorld,
+  courseRecovery,
   integrateCourses,
   outsidePlayablePath,
   routeEnvelope,
+  takeoffOf,
   viewportSupportsRoute,
+  type Takeoff,
 } from "../../lib/game/world";
 import { replay } from "../../lib/game/witness";
 import { bandCourse, bandFixture } from "./fixtures/band";
@@ -15,6 +18,7 @@ import { settledProjects } from "./fixtures/rendered-projects";
 import { measuredHomepage } from "./fixtures/rendered-homepage";
 import {
   sectionIds,
+  type Body,
   type GeometrySnapshot,
   type Rect,
   type Tuning,
@@ -731,6 +735,100 @@ test("course corridors and landings are part of the recovery envelope", () => {
   );
   const floor = r.world.surfaces.find((s) => s.id === "course-grid-run-catch")!;
   assert.equal(outsidePlayablePath(spawn(floor, tuning), r.world), false);
+});
+
+// Plays one jump with the arrow held for `hold` frames, tracking the
+// takeoff the way the session does, until it lands or leaves the playable path.
+function overshoot(
+  world: World,
+  from: { id: string; x: number; y: number },
+  x: number,
+  direction: -1 | 1,
+  hold: number,
+) {
+  let body: Body = { x, y: from.y - tuning.bodyHeight, width: 24, height: 32, vx: 0, vy: 0, groundedOn: from.id };
+  let takeoff: Takeoff | null = null;
+  let airborne = false;
+  for (let frame = 0; frame < 300; frame++) {
+    const next = step(body, { direction: frame < hold ? direction : 0, jumpPressed: frame === 0 }, world.surfaces, tuning).body;
+    takeoff = next.groundedOn ? null : (takeoffOf(body, next) ?? takeoff);
+    body = next;
+    if (outsidePlayablePath(body, world)) return { escaped: true as const, takeoff };
+    if (!body.groundedOn) airborne = true;
+    else if (airborne) return { escaped: false as const };
+  }
+  return { escaped: false as const };
+}
+
+const measuredWorld = (v: (typeof measuredViewports)[number]) => {
+  const { snapshot, width, usableHeight } = measuredHomepage(v);
+  const r = buildWorld(snapshot, tuning, { width, usableHeight }, 1);
+  assert.ok(r.ok);
+  return r.world;
+};
+
+test("an overshot course jump returns to its takeoff ledge, not the checkpoint", () => {
+  for (const v of ["1440", "1280"] as const) {
+    const world = measuredWorld(v);
+    const u1 = world.surfaces.find((s) => s.id === "course-precision-ledges-u1")!;
+    // Holding ← through the climb back to the 12 px lane ledge carries the body into the gutter.
+    const run = overshoot(world, u1, u1.x + 20, -1, 140);
+    assert.ok(run.escaped, v);
+    assert.deepEqual(run.takeoff, { id: u1.id, x: u1.x + 20 }, v);
+    const back = courseRecovery(world, run.takeoff, tuning)!;
+    assert.equal(back.groundedOn, u1.id, v);
+    assert.equal(back.x, u1.x + 20, v);
+    assert.equal(back.y, u1.y - tuning.bodyHeight, v);
+    assert.equal(outsidePlayablePath(back, world), false, v);
+  }
+});
+
+test("walking out of a course or jumping off the backbone keeps checkpoint recovery", () => {
+  const world = measuredWorld("1440");
+  const floor = world.surfaces.find((s) => s.id === "course-grid-run-catch")!;
+  // Keep walking right off the floor's far end, across any card top, out of the route.
+  let body: Body = { ...spawn(floor, tuning), x: floor.x + floor.width - 30 };
+  let takeoff: Takeoff | null = null;
+  let frame = 0;
+  for (; frame < 600 && !outsidePlayablePath(body, world); frame++) {
+    const next = step(body, { direction: 1, jumpPressed: false }, world.surfaces, tuning).body;
+    takeoff = next.groundedOn ? null : (takeoffOf(body, next) ?? takeoff);
+    body = next;
+  }
+  assert.ok(frame < 600);
+  assert.equal(takeoff, null);
+  assert.equal(courseRecovery(world, takeoff, tuning), null);
+  const hero = world.checkpoints.hero;
+  assert.equal(courseRecovery(world, { id: hero, x: 0 }, tuning), null);
+  assert.equal(courseRecovery({ ...world, courses: [] }, { id: floor.id, x: floor.x }, tuning), null);
+});
+
+test("a takeoff is recorded only when a grounded body jumps", () => {
+  const u1 = measuredWorld("1440").surfaces.find((s) => s.id === "course-precision-ledges-u1")!;
+  const standing = spawn(u1, tuning);
+  assert.deepEqual(takeoffOf(standing, { ...standing, groundedOn: null, vy: -570 }), { id: u1.id, x: standing.x });
+  assert.equal(takeoffOf(standing, { ...standing, groundedOn: null, vy: 9 }), null);
+  assert.equal(takeoffOf({ ...standing, groundedOn: null }, { ...standing, groundedOn: null, vy: -500 }), null);
+});
+
+test("no overshoot of an active course edge falls back to a checkpoint teleport", () => {
+  for (const v of ["1440", "1280"] as const) {
+    const world = measuredWorld(v);
+    for (const course of world.courses)
+      for (const edge of Object.keys(course.edgeTiers)) {
+        const [a, b] = edge.split(">").map((id) => world.surfaces.find((s) => s.id === id)!);
+        const direction = a.x + a.width / 2 < b.x + b.width / 2 ? 1 : -1;
+        // Takeoffs that stay supported for the first frame, so each run is a real jump.
+        for (let i = 0; i <= 2; i++) {
+          const x = a.x - 18 + ((a.width + 12) * i) / 2;
+          for (let hold = 0; hold <= 192; hold += 24) {
+            const run = overshoot(world, a, x, direction, hold);
+            if (run.escaped)
+              assert.equal(courseRecovery(world, run.takeoff, tuning)?.groundedOn, a.id, `${v} ${edge} x=${x} hold=${hold}`);
+          }
+        }
+      }
+  }
 });
 
 const supportsWithoutCourses = (
