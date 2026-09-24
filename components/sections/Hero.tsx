@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { hero } from "@/content";
 import { Container } from "@/components/layout/Container";
+import { GameEntry } from "@/components/game/game-entry";
 
 // Decorative, aria-hidden — the "20% Technical/Blueprint" accent layer standing
 // in for the deliberately-omitted photo (design tokens: typographic/abstract
@@ -53,43 +54,58 @@ function CodeMotif() {
 export function Hero() {
   return (
     <section
+      data-game-section="hero"
       className="relative flex min-h-[calc(100vh-73px)] items-center overflow-hidden border-b"
       style={{ borderColor: "var(--border)" }}
     >
       <BlueprintGrid />
       <CodeMotif />
       <Container className="relative flex flex-col gap-6 py-24">
-        <span className="tag hero-in w-fit" style={{ animationDelay: "0.05s" }}>
+        <span
+          data-game-obstacle="content"
+          className="tag hero-in w-fit"
+          style={{ animationDelay: "0.05s" }}
+        >
           {hero.title}
         </span>
         <h1
+          data-game-obstacle="content"
           className="hero-in font-display text-display max-w-4xl"
           style={{ animationDelay: "0.17s" }}
         >
           {hero.name}
         </h1>
         <p
+          data-game-obstacle="content"
           className="hero-in text-body-lg max-w-2xl text-foreground-muted"
           style={{ animationDelay: "0.29s" }}
         >
           {hero.tagline}
         </p>
         <p
+          data-game-obstacle="content"
           className="hero-in text-body max-w-2xl text-foreground-muted"
           style={{ animationDelay: "0.41s" }}
         >
           {hero.valueProp}
         </p>
-        <div className="hero-in flex flex-wrap gap-4 pt-4" style={{ animationDelay: "0.53s" }}>
+        <div
+          data-game-checkpoint
+          data-game-action-row="hero-actions"
+          className="hero-in flex flex-wrap gap-4 pt-4"
+          style={{ animationDelay: "0.53s" }}
+        >
           {hero.ctas.map((cta, index) => (
             <Link
               key={cta.href}
+              data-game-target={`hero-${cta.href.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`}
               href={cta.href}
               className={index === 0 ? "btn btn-primary" : "btn btn-secondary"}
             >
               {cta.label}
             </Link>
           ))}
+          <GameEntry />
         </div>
       </Container>
     </section>

@@ -72,6 +72,8 @@ export function Header() {
 
   return (
     <header
+      data-game-header
+      data-game-menu-open={open ? "true" : "false"}
       className="sticky top-0 z-50 border-b bg-background/90 backdrop-blur"
       style={{ borderColor: "var(--border)" }}
     >

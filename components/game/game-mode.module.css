@@ -1,0 +1,431 @@
+.entry {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Step-into-play trigger: a deliberate, scoped exception to the site-wide
+   "buttons/links use color/underline transitions only" rule (recorded in
+   CLAUDE.md/AGENTS.md Animation Rules). Transforms apply only to decorative
+   ::before/::after layers and the label/peek spans — the <button> box, its
+   focus ring, and the Hero action row's measured geometry never move. The
+   real border stays transparent (!important beats .btn-secondary:hover's
+   higher-specificity border-color, which would otherwise draw an unskewed
+   accent border alongside the skewed ::before one) so the only visible
+   border is ::before's. */
+.trigger {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent !important;
+}
+.trigger::before,
+.trigger::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  pointer-events: none;
+  /* Rest state governs leaving: reverses over --duration-fast. Engaged
+     (:hover/:focus-visible) rules below raise this to --duration-base for
+     entry; :active drops it back to --duration-fast for the press. */
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+.trigger::before {
+  z-index: -1;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+.trigger::after {
+  /* The ledge under the face. transform-origin: bottom keeps its footing
+     fixed so scaleY reads as a jump-pad compression, not a shrink upward. */
+  z-index: -2;
+  inset: auto 0 -4px 4px;
+  top: auto;
+  height: 4px;
+  transform-origin: bottom;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.triggerLabel {
+  display: inline-block;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+.peek {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 100%;
+  width: 12px;
+  height: 16px;
+  opacity: 0;
+  transform: translateY(8px);
+  clip-path: inset(0 0 -2px 0);
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.trigger[aria-disabled="true"]:hover {
+  border-color: transparent;
+  color: var(--foreground);
+}
+.trigger:not([aria-disabled="true"]):focus-visible {
+  color: var(--accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .trigger:not([aria-disabled="true"]):hover::before {
+    transform: translateY(-2px) skewX(-8deg);
+    border-color: var(--accent);
+    transition-duration: var(--duration-base);
+  }
+  .trigger:not([aria-disabled="true"]):hover::after {
+    opacity: 1;
+    transform: skewX(-8deg);
+    transition-duration: var(--duration-base);
+  }
+  .trigger:not([aria-disabled="true"]):hover .triggerLabel {
+    transform: translateY(-2px);
+    transition-duration: var(--duration-base);
+  }
+  .trigger:not([aria-disabled="true"]):hover .peek {
+    opacity: 1;
+    transform: translateY(-2px);
+    transition:
+      transform var(--duration-base) var(--ease-standard) 80ms,
+      opacity var(--duration-fast) var(--ease-standard) 80ms;
+  }
+}
+.trigger:not([aria-disabled="true"]):focus-visible::before {
+  transform: translateY(-2px) skewX(-8deg);
+  border-color: var(--accent);
+  transition-duration: var(--duration-base);
+}
+.trigger:not([aria-disabled="true"]):focus-visible::after {
+  opacity: 1;
+  transform: skewX(-8deg);
+  transition-duration: var(--duration-base);
+}
+.trigger:not([aria-disabled="true"]):focus-visible .triggerLabel {
+  transform: translateY(-2px);
+  transition-duration: var(--duration-base);
+}
+.trigger:not([aria-disabled="true"]):focus-visible .peek {
+  opacity: 1;
+  transform: translateY(-2px);
+  transition:
+    transform var(--duration-base) var(--ease-standard) 80ms,
+    opacity var(--duration-fast) var(--ease-standard) 80ms;
+}
+
+.trigger:not([aria-disabled="true"]):active::before {
+  transform: skewX(-8deg);
+  transition-duration: var(--duration-fast);
+}
+.trigger:not([aria-disabled="true"]):active::after {
+  /* scaleY (not height/bottom) so the compression animates through the
+     transform transition instead of snapping. */
+  transform: skewX(-8deg) scaleY(0.5);
+  transition-duration: var(--duration-fast);
+}
+.trigger:not([aria-disabled="true"]):active .triggerLabel {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger::before,
+  .trigger::after,
+  .trigger .triggerLabel,
+  .trigger .peek {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+@media (forced-colors: active) {
+  .trigger::after,
+  .trigger .peek {
+    display: none;
+  }
+  .trigger::before {
+    border-color: ButtonText;
+    background: ButtonFace;
+  }
+}
+
+/* The session supplies document bounds measured without this layer. Clipping
+   contains every visual, including a falling avatar, without extending scroll. */
+.world {
+  --checkpoint-inactive: #f19b98;
+  --checkpoint-active: #7ace9e;
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: clip;
+  max-width: 100%;
+  contain: layout paint;
+  pointer-events: none;
+  z-index: 30;
+}
+
+:global(.light) .world {
+  --checkpoint-inactive: #a02c35;
+  --checkpoint-active: #17693b;
+}
+
+/* Drafted ledges: end ticks hang below the line so they never read as footing. */
+.platform {
+  position: absolute;
+  height: 2px;
+  color: var(--accent);
+  background: currentColor;
+}
+
+.platform::before,
+.platform::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  width: 1px;
+  height: 6px;
+  background: currentColor;
+}
+
+.platform::before {
+  left: 0;
+}
+
+.platform::after {
+  right: 0;
+}
+
+.platform[data-kind="challenge"] {
+  color: var(--accent-strong);
+}
+
+/* A section-cut hatch under the whole challenge ledge. */
+.platform[data-kind="challenge"]::before {
+  width: 100%;
+  height: 5px;
+  background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 5px);
+}
+
+.platform[data-kind="catch"] {
+  color: var(--foreground-muted);
+  background: repeating-linear-gradient(90deg, currentColor 0 8px, transparent 8px 14px);
+}
+
+/* Ledges are painted with backgrounds, which forced colors would replace with
+   Canvas; keep them, in the system text color, so the route stays visible. */
+@media (forced-colors: active) {
+  .platform[data-kind] {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+}
+
+.flag {
+  position: absolute;
+  color: var(--checkpoint-inactive);
+}
+
+.flag[data-active="true"] {
+  color: var(--checkpoint-active);
+}
+.pole {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+.check {
+  fill: none;
+  stroke: var(--background);
+  stroke-width: 2;
+}
+
+.avatar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 32px;
+}
+
+/* Poses are discrete session-driven attributes, not CSS animations: OS motion
+   preferences cannot alter them, and pausing cancels all pose advancement. */
+.figure {
+  transform-origin: 12px 32px;
+}
+.hoodie {
+  fill: var(--accent);
+  stroke: var(--background);
+  stroke-width: 1;
+}
+.face {
+  fill: var(--foreground);
+}
+.eyes {
+  stroke: var(--background);
+  stroke-width: 1.5;
+}
+.legs {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform-origin: 12px 23px;
+}
+.seam {
+  fill: none;
+  stroke: var(--background);
+  stroke-width: 1;
+}
+.avatar[data-facing="left"] svg {
+  transform: scaleX(-1);
+}
+.avatar[data-pose="run-a"] .legs {
+  transform: skewX(18deg);
+}
+.avatar[data-pose="run-b"] .legs {
+  transform: skewX(-18deg);
+}
+.avatar[data-pose="rise"] .legs {
+  transform: translateY(-3px) rotate(-12deg);
+}
+.avatar[data-pose="fall"] .legs {
+  transform: rotate(12deg);
+}
+.avatar[data-pose="land"] .figure {
+  transform: scaleY(0.9);
+}
+
+.hud {
+  position: fixed;
+  inset-inline: 0;
+  z-index: 40;
+  overflow: auto;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+  pointer-events: auto;
+  font-size: 0.8125rem;
+}
+
+.controlRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.instructions {
+  flex: 1 1 18rem;
+  font-family: var(--font-mono);
+}
+.status {
+  color: var(--foreground-muted);
+  margin-top: 0.25rem;
+}
+.hint {
+  display: block;
+  min-height: 1.5em;
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+}
+.hud button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Outline does not change a link's layout, transform, or native hit area. */
+.selected {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 3px;
+}
+
+.keyboardRequired,
+.largerWindow {
+  display: none;
+}
+
+.feedback,
+.largerWindow {
+  color: var(--foreground-muted);
+  font-size: 0.875rem;
+}
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(30rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.dialog p {
+  margin-top: 1rem;
+  color: var(--foreground-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.preparation {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+@media not all and (any-pointer: fine) {
+  .entry:not([data-keyboard="true"]) .available {
+    display: none;
+  }
+
+  .entry:not([data-keyboard="true"]) .keyboardRequired {
+    display: inline;
+    color: var(--foreground-muted);
+  }
+}
+
+/* Width wins over the capability hint, including with an attached keyboard. */
+@media (width < 768px) {
+  .entry .trigger,
+  .entry .feedback {
+    display: none;
+  }
+
+  .largerWindow {
+    display: inline;
+    padding-block: 0.75rem;
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "ES2020", "module": "CommonJS", "moduleResolution": "node", "strict": true, "esModuleInterop": true, "skipLibCheck": true, "types": ["node"], "lib": ["ES2020", "DOM"], "rootDir": ".", "outDir": ".game-tests", "noEmitOnError": true },
+  "include": ["lib/game/**/*.ts", "tests/game/**/*.ts"]
+}
