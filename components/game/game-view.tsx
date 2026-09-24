@@ -4,6 +4,7 @@ import {
   useEffect,
   useId,
   useImperativeHandle,
+  useMemo,
   useRef,
   useSyncExternalStore,
   type Ref,
@@ -11,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { gameMode } from "@/content/game-mode";
+import { ledgeKinds } from "@/lib/game/courses";
 import { sectionIds, type Body, type Phase, type World } from "@/lib/game/model";
 import { AvatarFigure } from "./avatar-figure";
 import styles from "./game-mode.module.css";
@@ -72,6 +74,7 @@ export function GameView({
   const statusId = useId();
   const mounted = useSyncExternalStore(subscribeToMount, clientSnapshot, serverSnapshot);
   const initialized = phase !== "off" && phase !== "confirming";
+  const kinds = useMemo(() => ledgeKinds(world?.courses ?? []), [world]);
 
   function clearSelection() {
     selected.current?.classList.remove(styles.selected);
@@ -167,6 +170,7 @@ export function GameView({
             <div
               key={surface.id}
               className={styles.platform}
+              data-kind={kinds.get(surface.id) ?? "base"}
               style={{ left: surface.x, top: surface.y, width: surface.width }}
             />
           ))}

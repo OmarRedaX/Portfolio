@@ -683,6 +683,21 @@ export function validateCourse(
 
 export type AcceptedCourse = Extract<CourseResult, { ok: true }>;
 
+export type LedgeKind = "base" | "challenge" | "catch";
+
+// Surfaces missing from the map are drawn as base ledges.
+export function ledgeKinds(
+  courses: readonly CourseSummary[],
+): Map<string, Exclude<LedgeKind, "base">> {
+  const kinds = new Map<string, Exclude<LedgeKind, "base">>();
+  for (const course of courses) {
+    if (course.tier === "challenge")
+      for (const id of course.surfaceIds) kinds.set(id, "challenge");
+    for (const id of course.catchIds) kinds.set(id, "catch");
+  }
+  return kinds;
+}
+
 export const isButtonLedge = (surface: Surface) =>
   surface.id.startsWith("action-") || surface.id.startsWith("branch-");
 

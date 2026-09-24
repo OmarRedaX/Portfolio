@@ -5,6 +5,7 @@ import {
   compileCourse,
   courseSpan,
   edgeTier,
+  ledgeKinds,
   findZone,
   tierOrder,
   validateCourse,
@@ -549,4 +550,27 @@ test("measured worlds activate the courses that fit, with challenge courses actu
         `${v} ${c.id} is not actually challenging`,
       );
   }
+});
+
+test("course ledges are drawn by kind: challenge-course ledges, catch floors, and base", () => {
+  const summary = (
+    id: CourseId,
+    tier: CourseSummary["tier"],
+    surfaceIds: string[],
+    catchIds: string[],
+  ) => ({
+    ...challengeSummary(id),
+    tier,
+    surfaceIds,
+    catchIds,
+  });
+  const kinds = ledgeKinds([
+    summary("grid-run", "challenge", ["g-u1", "g-rest", "g-catch"], ["g-catch"]),
+    summary("stepping-stones", "easy", ["s-u1"], []),
+  ]);
+  assert.equal(kinds.get("g-u1"), "challenge");
+  assert.equal(kinds.get("g-rest"), "challenge");
+  assert.equal(kinds.get("g-catch"), "catch");
+  assert.equal(kinds.get("s-u1") ?? "base", "base");
+  assert.equal(kinds.get("helper-1-1") ?? "base", "base");
 });

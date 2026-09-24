@@ -1,5 +1,17 @@
 # Game Mode rendered-layout validation
 
+## Drafted-ledge presentation (2026-09-24, Claude Code)
+
+Traversal plan Task 9. Game ledges are drawn as a 2px line with 1×6px end ticks below it. Challenge-course ledges use `--accent-strong` with a 135° hatch below the line; catch floors use a dashed `--foreground-muted` line; every other ledge, backbone included, uses `--accent`. Headless Chrome drove the shared `next dev` server at 1440×900. It started Game Mode through the trigger and the dialog in each theme, then read the tokens with `getComputedStyle`:
+
+| Token vs `--background` | Dark (`#0e0c0a`) | Light (`#f5f1e8`) |
+|---|---|---|
+| `--accent` | #6fa8c7, 7.53:1 | #245a78, 6.63:1 |
+| `--accent-strong` | #8fc0da, 9.97:1 | #123c52, 10.39:1 |
+| `--foreground-muted` | #a99e8d, 7.40:1 | #6b6152, 5.39:1 |
+
+All are ≥ 3:1, so no token was substituted. In both themes, the live world rendered all 13 course ledges (stepping-stones, grid-run and precision-ledges) at the model's positions. It had 80 base, 7 challenge and 2 catch platforms. For each course ledge, the ledge-and-tick box (the line plus 8px) and the standing-body box (32px above the line) were tested against every visible readable element in `main`: links, buttons, form fields, and text-bearing p/h/li/span/dt/dd/time/label. None overlapped. Screenshots of each active course in both themes are in `.superpowers/sdd/game-mode-traversal/` (`t9-<course>-1440-<theme>.png`). The lowest line of each course sits 12px above the next section's kicker label; the ticks hang 6px into that gap.
+
 ## Traversal course tuning (2026-09-24, Claude Code)
 
 Traversal plan Task 8, run against the measured fixtures with `buildWorld`. At first no blueprint validated anywhere. The stop gate triggered, and the user chose to change code under the unchanged rules (12px clearance, tier table, rhythm and catch rules, and every acceptance criterion). Four changes were made:
