@@ -23,7 +23,7 @@ import type {
 } from "../../lib/game/model";
 import { replay } from "../../lib/game/witness";
 import { buildWorld } from "../../lib/game/world";
-import { bandFixture } from "./fixtures/band";
+import { bandCourse, bandFixture } from "./fixtures/band";
 import { measuredHomepage } from "./fixtures/rendered-homepage";
 
 const tuning: Tuning = {
@@ -183,25 +183,6 @@ test("rungs align to Experience keep-out tops and alternate lanes", () => {
   }
 });
 
-// A challenge course in the About→Tech Stack band of bandFixture(): a drop from
-// the lane entry, a low run with widening gaps, a rest ledge, and a catch floor
-// that returns to the Tech Stack checkpoint. Jumps stay low in the band so the
-// body clears the About content above by the course clearance on every frame.
-const testCourse: CourseBlueprint = {
-  id: "grid-run",
-  section: "about",
-  zone: "band",
-  tier: "challenge",
-  layout: "ledges",
-  ledges: [
-    { id: "d1", x: 0, y: { top: 104 }, width: 48 },
-    { id: "u1", x: 96, y: { bottom: 48 }, width: 64 },
-    { id: "u2", x: 272, y: { bottom: 48 }, width: 48 },
-    { id: "rest", x: 464, y: { bottom: 48 }, width: 112 },
-    { id: "catch", x: 48, y: { bottom: 0 }, width: 560, catch: true },
-  ],
-};
-
 type Fixture = {
   snapshot: GeometrySnapshot;
   world: World;
@@ -211,13 +192,15 @@ type Fixture = {
 
 function baseFixture(): Fixture {
   const snapshot = bandFixture();
-  const built = buildWorld(snapshot, tuning, { width: 1440, usableHeight: 700 }, 1);
+  const built = buildWorld(snapshot, tuning, { width: 1440, usableHeight: 700 }, 1, {
+    courses: false,
+  });
   assert.ok(built.ok);
   return {
     snapshot: bandFixture(),
     world: built.world,
-    blueprint: testCourse,
-    zone: findZone(testCourse, snapshot, 1440, 120, tuning)!,
+    blueprint: bandCourse,
+    zone: findZone(bandCourse, snapshot, 1440, 120, tuning)!,
   };
 }
 
@@ -411,7 +394,7 @@ test("an accepted course replaces the spanned helpers with bidirectional, replay
   assert.deepEqual(r.summary.catchIds, ["course-grid-run-catch"]);
   assert.deepEqual(
     r.summary.surfaceIds,
-    ledgesOf(testCourse).map((ledge) => `course-grid-run-${ledge.id}`),
+    ledgesOf(bandCourse).map((ledge) => `course-grid-run-${ledge.id}`),
   );
   const final = [
     ...f.world.surfaces.filter((s) => !r.removedIds.includes(s.id)),

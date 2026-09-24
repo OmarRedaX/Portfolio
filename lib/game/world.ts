@@ -10,8 +10,16 @@ import {
   type Validation,
   type World,
 } from "./model";
+import {
+  applyCourse,
+  blueprints,
+  routeReachable,
+  validateCourse,
+  type AcceptedCourse,
+  type CourseBlueprint,
+} from "./courses";
 import { spawn } from "./physics";
-import { apex, bodyRect, clearOf, maxSurfaces, witness } from "./witness";
+import { apex, bodyRect, clearOf, maxSurfaces, replay, witness } from "./witness";
 
 const validationCache = new Map<string, Validation>();
 const expanded = (r: Rect, x: number, y: number): Rect => ({
@@ -297,7 +305,8 @@ function attempt(
     // A level route knot beside the first segment can make the descent to a
     // helper under it unwitnessable (the body lands on the knot). The level
     // link then carries the branch; the lower link is kept only when proven.
-    const level = routeSurface && Math.abs(routeSurface.y - branchY) <= 1 ? routeSurface : null;
+    const level =
+      routeSurface && Math.abs(routeSurface.y - branchY) <= 1 ? routeSurface : null;
     if (!level && (!origin || origin.y - branchY > apex(tuning) - tuning.bodyHeight))
       return null;
     const startX = lane + width + 4;
@@ -318,7 +327,12 @@ function attempt(
       surfaces.push(next);
       branchPairs.push([prior, next]);
       if (i === 0 && routeSurface && !level) branchPairs.push([routeSurface, next]);
-      if (i === 0 && level && origin && origin.y - branchY <= apex(tuning) - tuning.bodyHeight)
+      if (
+        i === 0 &&
+        level &&
+        origin &&
+        origin.y - branchY <= apex(tuning) - tuning.bodyHeight
+      )
         optionalPairs.push([origin, next]);
       prior = next;
     }
@@ -406,7 +420,8 @@ function attempt(
   }
   for (const [a, b] of optionalPairs) {
     const forward = witness(a, b, surfaces, exclusions, tuning, viewportWidth);
-    const backward = forward && witness(b, a, surfaces, exclusions, tuning, viewportWidth);
+    const backward =
+      forward && witness(b, a, surfaces, exclusions, tuning, viewportWidth);
     if (forward && backward) connections.push(forward, backward);
   }
   const visited = new Set([knots.find((k) => k.checkpoint === "hero")!.id]);
@@ -429,7 +444,26 @@ function attempt(
   const checkpoints = Object.fromEntries(
     knots.filter((k) => k.checkpoint).map((k) => [k.checkpoint, k.id]),
   ) as Record<SectionId, string>;
-  const envelope = [
+  const envelope = routeEnvelope(surfaces, connections, tuning);
+  return {
+    version,
+    surfaces,
+    connections,
+    checkpoints,
+    actionLedges,
+    targetLedges,
+    obstacles: exclusions,
+    envelope,
+    courses: [],
+  };
+}
+
+export function routeEnvelope(
+  surfaces: readonly Surface[],
+  connections: readonly Connection[],
+  tuning: Tuning,
+): Rect[] {
+  return [
     ...surfaces.map((surface) =>
       expanded(
         {
@@ -448,17 +482,46 @@ function attempt(
       ),
     ),
   ];
-  return {
-    version,
-    surfaces,
-    connections,
-    checkpoints,
-    actionLedges,
-    targetLedges,
-    obstacles: exclusions,
-    envelope,
-    courses: [],
-  };
+}
+
+// Courses are accepted in blueprint order against the world so far. The final
+// world must replay every connection on its final surface set; failing that,
+// courses are dropped in reverse acceptance order, down to the backbone.
+export function integrateCourses(
+  world: World,
+  snapshot: GeometrySnapshot,
+  tuning: Tuning,
+  viewportWidth: number,
+  laneX: number,
+  courseBlueprints: readonly CourseBlueprint[] = blueprints,
+): World {
+  const accepted: AcceptedCourse[] = [];
+  let current = world;
+  for (const blueprint of courseBlueprints) {
+    const result = validateCourse(blueprint, {
+      world: current,
+      snapshot,
+      tuning,
+      viewportWidth,
+      laneX,
+      acceptedCourseRects: accepted.flatMap((course) => course.corridor),
+    });
+    if (!result.ok) continue;
+    accepted.push(result);
+    current = applyCourse(current, result);
+  }
+  while (accepted.length) {
+    const final = accepted.reduce(applyCourse, world);
+    if (final.connections.every((c) => replay(c, final.surfaces, tuning))) {
+      const complete = {
+        ...final,
+        envelope: routeEnvelope(final.surfaces, final.connections, tuning),
+      };
+      return routeReachable(complete) ? complete : world;
+    }
+    accepted.pop();
+  }
+  return world;
 }
 
 export function buildWorld(
@@ -466,6 +529,7 @@ export function buildWorld(
   tuning: Tuning,
   viewport: { width: number; usableHeight: number },
   version: number,
+  options: { courses?: boolean; blueprints?: readonly CourseBlueprint[] } = {},
 ): Validation {
   const key = JSON.stringify([
     snapshot.sectionBounds,
@@ -475,12 +539,15 @@ export function buildWorld(
     snapshot.plannedActionRows,
     snapshot.actionRows,
     snapshot.targets,
+    snapshot.plannedTargets,
     snapshot.obstacles,
+    snapshot.keepouts,
     snapshot.revealsSettled,
     snapshot.headerBottom,
     tuning,
     viewport,
     version,
+    options,
   ]);
   const cached = validationCache.get(key);
   if (cached) return cached;
@@ -506,7 +573,19 @@ export function buildWorld(
       lane.x,
       lane.width,
     );
-    if (world) return remember({ ok: true, world, minUsableHeight });
+    if (!world) continue;
+    const final =
+      options.courses === false
+        ? world
+        : integrateCourses(
+            world,
+            snapshot,
+            tuning,
+            viewport.width,
+            lane.x,
+            options.blueprints,
+          );
+    return remember({ ok: true, world: final, minUsableHeight });
   }
   return remember({ ok: false, reason: "layout" });
 }

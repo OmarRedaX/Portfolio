@@ -633,30 +633,7 @@ export function validateCourse(
   );
   if (uncaught) return reject("catch");
 
-  const finalConnections = [
-    ...world.connections.filter(
-      (c) =>
-        !removedIds.includes(c.from) &&
-        !removedIds.includes(c.to) &&
-        !crossesSpan(c, lane, entry, exit),
-    ),
-    ...connections,
-  ];
-  const hero = world.checkpoints.hero;
-  const forward = reachable(hero, finalConnections);
-  const backward = reachable(hero, finalConnections, true);
-  const required = [
-    ...Object.values(world.checkpoints),
-    ...Object.values(world.actionLedges),
-    ...Object.values(world.targetLedges),
-  ];
-  if (
-    required.some((id) => !forward.has(id)) ||
-    compiled.some((s) => !forward.has(s.id) || !backward.has(s.id))
-  )
-    return reject("graph");
-
-  return {
+  const accepted: AcceptedCourse = {
     ok: true,
     summary: {
       id: blueprint.id,
@@ -677,6 +654,49 @@ export function validateCourse(
     connections,
     removedIds,
     corridor: connections.flatMap((c) => c.corridor),
+  };
+  const candidate = applyCourse(world, accepted);
+  const hero = world.checkpoints.hero;
+  const backward = reachable(hero, candidate.connections, true);
+  if (!routeReachable(candidate) || compiled.some((s) => !backward.has(s.id)))
+    return reject("graph");
+  return accepted;
+}
+
+export type AcceptedCourse = Extract<CourseResult, { ok: true }>;
+
+// Every checkpoint, action ledge, target ledge and course surface is reached
+// from the Hero checkpoint.
+export function routeReachable(world: World): boolean {
+  const forward = reachable(world.checkpoints.hero, world.connections);
+  return [
+    ...Object.values(world.checkpoints),
+    ...Object.values(world.actionLedges),
+    ...Object.values(world.targetLedges),
+    ...world.courses.flatMap((course) => course.surfaceIds),
+  ].every((id) => forward.has(id));
+}
+
+// Replaces the course's helper span (and any lane link that jumps it) with the
+// course surfaces and their witnessed connections.
+export function applyCourse(world: World, course: AcceptedCourse): World {
+  const entry = world.surfaces.find((s) => s.id === course.summary.entryId)!;
+  const exit = world.surfaces.find((s) => s.id === course.summary.exitId)!;
+  const lane = world.surfaces.filter((s) => s.x === entry.x);
+  const removed = new Set(course.removedIds);
+  return {
+    ...world,
+    surfaces: [...world.surfaces.filter((s) => !removed.has(s.id)), ...course.surfaces],
+    connections: [
+      ...world.connections.filter(
+        (c) =>
+          !removed.has(c.from) &&
+          !removed.has(c.to) &&
+          !crossesSpan(c, lane, entry, exit),
+      ),
+      ...course.connections,
+    ],
+    courses: [...world.courses, course.summary],
   };
 }
 

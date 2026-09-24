@@ -73,7 +73,8 @@ export function classifyActivation(element: HTMLElement, current: URL): Activati
 
 export function destinationLanding(world: World, geometry: GeometrySnapshot, section: SectionId, tuning: Tuning): Surface | null {
   const bounds = geometry.sectionBounds[section];
-  const safe = world.surfaces.filter((surface) => surface.section === section &&
+  const course = new Set(world.courses.flatMap((summary) => summary.surfaceIds));
+  const safe = world.surfaces.filter((surface) => surface.section === section && !course.has(surface.id) &&
     surface.x >= bounds.x && surface.x + surface.width <= bounds.x + bounds.width &&
     surface.y >= bounds.y + tuning.bodyHeight && surface.y <= bounds.y + bounds.height &&
     spawn(surface, tuning).x >= bounds.x &&

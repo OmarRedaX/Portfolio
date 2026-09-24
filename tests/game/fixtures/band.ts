@@ -1,3 +1,4 @@
+import type { CourseBlueprint } from "../../../lib/game/courses";
 import type { GeometrySnapshot, Rect, SectionId } from "../../../lib/game/model";
 
 const box = (x: number, y: number, width: number, height: number): Rect => ({
@@ -77,3 +78,22 @@ export function bandFixture(): GeometrySnapshot {
     revealsSettled: true,
   };
 }
+
+// A challenge course in the About→Tech Stack band of bandFixture(): a drop from
+// the lane entry, a low run with widening gaps, a rest ledge, and a catch floor
+// that returns to the Tech Stack checkpoint. Jumps stay low in the band so the
+// body clears the About content above by the course clearance on every frame.
+export const bandCourse: CourseBlueprint = {
+  id: "grid-run",
+  section: "about",
+  zone: "band",
+  tier: "challenge",
+  layout: "ledges",
+  ledges: [
+    { id: "d1", x: 0, y: { top: 104 }, width: 48 },
+    { id: "u1", x: 96, y: { bottom: 48 }, width: 64 },
+    { id: "u2", x: 272, y: { bottom: 48 }, width: 48 },
+    { id: "rest", x: 464, y: { bottom: 48 }, width: 112 },
+    { id: "catch", x: 48, y: { bottom: 0 }, width: 560, catch: true },
+  ],
+};

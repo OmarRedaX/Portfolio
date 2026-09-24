@@ -246,7 +246,7 @@ test("destination landing prefers its checkpoint and restricts fallback to clear
   const outside: Surface = { ...helper, id: "outside", x: 790 };
   const elsewhere: Surface = { ...helper, id: "elsewhere", section: "about" };
   geometry.plannedSurfaces = [real];
-  const world = { surfaces: [elsewhere, outside, real, helper, checkpoint], checkpoints: { projects: checkpoint.id }, obstacles: [] } as unknown as World;
+  const world = { surfaces: [elsewhere, outside, real, helper, checkpoint], checkpoints: { projects: checkpoint.id }, obstacles: [], courses: [] } as unknown as World;
   assert.equal(destinationLanding(world, geometry, "projects", tuning)?.id, checkpoint.id);
   const blocked = { ...world, obstacles: [{ x: 30, y: 560, width: 60, height: 50 }] };
   assert.equal(destinationLanding(blocked, geometry, "projects", tuning)?.id, helper.id);
@@ -260,9 +260,46 @@ test("destination landing accepts a clear narrow checkpoint supported by overlap
   const geometry = snapshotWith("unused", {} as HTMLElement, []);
   geometry.sectionBounds.projects = { x: 0, y: 500, width: 768, height: 500 };
   const checkpoint: Surface = { id: "narrow-checkpoint", section: "projects", x: 730, y: 600, width: 16, checkpoint: true };
-  const world = { surfaces: [checkpoint], checkpoints: { projects: checkpoint.id }, obstacles: [] } as unknown as World;
+  const world = { surfaces: [checkpoint], checkpoints: { projects: checkpoint.id }, obstacles: [], courses: [] } as unknown as World;
   assert.equal(destinationLanding(world, geometry, "projects", tuning)?.id, checkpoint.id);
   assert.equal(destinationLanding({ ...world, obstacles: [{ x: 727, y: 568, width: 1, height: 32 }] }, geometry, "projects", tuning), null);
   // The support fits, but a centered body at the viewport edge does not.
   assert.equal(destinationLanding({ ...world, surfaces: [{ ...checkpoint, x: 0 }] }, geometry, "projects", tuning), null);
+});
+
+test("destination landing never falls back to a course ledge", () => {
+  const geometry = snapshotWith("unused", {} as HTMLElement, []);
+  geometry.sectionBounds.projects = { x: 0, y: 500, width: 800, height: 500 };
+  const checkpoint: Surface = {
+    id: "projects-checkpoint",
+    section: "projects",
+    x: 30,
+    y: 600,
+    width: 60,
+    checkpoint: true,
+  };
+  const ledge: Surface = {
+    ...checkpoint,
+    id: "course-precision-ledges-rest",
+    x: 200,
+    checkpoint: false,
+  };
+  const world = {
+    surfaces: [ledge, checkpoint],
+    checkpoints: { projects: checkpoint.id },
+    obstacles: [{ x: 30, y: 560, width: 60, height: 50 }],
+    courses: [
+      {
+        id: "precision-ledges",
+        section: "projects",
+        tier: "challenge",
+        entryId: "a",
+        exitId: "b",
+        surfaceIds: [ledge.id],
+        catchIds: [],
+        edgeTiers: {},
+      },
+    ],
+  } as unknown as World;
+  assert.equal(destinationLanding(world, geometry, "projects", tuning), null);
 });

@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildWorld, outsidePlayablePath, viewportSupportsRoute } from "../../lib/game/world";
+import {
+  buildWorld,
+  integrateCourses,
+  outsidePlayablePath,
+  routeEnvelope,
+  viewportSupportsRoute,
+} from "../../lib/game/world";
+import { replay } from "../../lib/game/witness";
+import { bandCourse, bandFixture } from "./fixtures/band";
 import { spawn, step } from "../../lib/game/physics";
 import { createSession, transition } from "../../lib/game/session";
 import { settledProjects } from "./fixtures/rendered-projects";
@@ -10,6 +18,7 @@ import {
   type GeometrySnapshot,
   type Rect,
   type Tuning,
+  type World,
 } from "../../lib/game/model";
 
 const tuning: Tuning = {
@@ -419,7 +428,10 @@ function measured1024(): GeometrySnapshot {
     checkpoint: false,
   }));
   snapshot.surfaces = [...snapshot.plannedSurfaces];
-  snapshot.plannedTargets = snapshot.targets.map((target) => ({ ...target, enabled: true }));
+  snapshot.plannedTargets = snapshot.targets.map((target) => ({
+    ...target,
+    enabled: true,
+  }));
   return snapshot;
 }
 
@@ -442,7 +454,11 @@ test("a Contact arrival before Projects has revealed keeps a witnessed 1024px ro
   }));
   const result = buildWorld(snapshot, tuning, { width: 1024, usableHeight: 705 }, 4);
   assert.ok(result.ok, JSON.stringify(result));
-  assert.ok(result.world.surfaces.some((surface) => surface.id === result.world.checkpoints.contact));
+  assert.ok(
+    result.world.surfaces.some(
+      (surface) => surface.id === result.world.checkpoints.contact,
+    ),
+  );
   for (const connection of result.world.connections) {
     let body = spawn(
       result.world.surfaces.find((surface) => surface.id === connection.from)!,
@@ -463,13 +479,20 @@ test("a viewport without permanent side room for the route is unsupported", () =
   // Measured without a classic scrollbar at 768px: content spans 32–736, so
   // neither 32px gutter lets the 24px body step off a helper inside the viewport.
   const overlay = fixture();
-  for (const id of sectionIds) overlay.sectionAnchors[id] = { ...overlay.sectionAnchors[id], width: 704 };
+  for (const id of sectionIds)
+    overlay.sectionAnchors[id] = { ...overlay.sectionAnchors[id], width: 704 };
   const viewport = { width: 768, usableHeight: 705 };
-  assert.deepEqual(buildWorld(overlay, tuning, viewport, 1), { ok: false, reason: "layout" });
+  assert.deepEqual(buildWorld(overlay, tuning, viewport, 1), {
+    ok: false,
+    reason: "layout",
+  });
   assert.equal(viewportSupportsRoute(overlay, tuning, viewport, 1), false);
   // A classic scrollbar ends content at 721 while innerWidth stays 768.
   assert.equal(viewportSupportsRoute(fixture(), tuning, viewport, 1), true);
-  assert.equal(viewportSupportsRoute(fixture(), tuning, { width: 768, usableHeight: 120 }, 1), false);
+  assert.equal(
+    viewportSupportsRoute(fixture(), tuning, { width: 768, usableHeight: 120 }, 1),
+    false,
+  );
 });
 
 test("transient reveal state never makes a supported viewport unsupported", () => {
@@ -482,7 +505,10 @@ test("transient reveal state never makes a supported viewport unsupported", () =
     revealsSettled: false,
   };
   const viewport = { width: 1024, usableHeight: 705 };
-  assert.deepEqual(buildWorld(revealing, tuning, viewport, 6), { ok: false, reason: "layout" });
+  assert.deepEqual(buildWorld(revealing, tuning, viewport, 6), {
+    ok: false,
+    reason: "layout",
+  });
   assert.equal(viewportSupportsRoute(revealing, tuning, viewport, 6), true);
 });
 
@@ -613,3 +639,237 @@ for (const v of ["1440", "1280", "1024-overlay", "768-classic"] as const) {
     assert.ok(buildWorld(snapshot, tuning, { width, usableHeight }, 1).ok);
   });
 }
+
+const band = { width: 1440, usableHeight: 700 };
+const measuredViewports = ["1440", "1280", "1024-overlay", "768-classic"] as const;
+
+// The band world with its synthetic course, alongside every measured homepage
+// (whose own courses are tuned in a later task).
+function worlds(): Array<{ name: string; world: World }> {
+  const built = buildWorld(bandFixture(), tuning, band, 1, { blueprints: [bandCourse] });
+  assert.ok(built.ok);
+  const all = [{ name: "band", world: built.world }];
+  for (const v of measuredViewports) {
+    const { snapshot, width, usableHeight } = measuredHomepage(v);
+    const r = buildWorld(snapshot, tuning, { width, usableHeight }, 1);
+    if (r.ok) all.push({ name: v, world: r.world });
+  }
+  return all;
+}
+
+const reach = (start: string, edges: Array<[string, string]>) => {
+  const seen = new Set([start]);
+  const queue = [start];
+  while (queue.length) {
+    const at = queue.shift()!;
+    for (const [a, b] of edges)
+      if (a === at && !seen.has(b)) {
+        seen.add(b);
+        queue.push(b);
+      }
+  }
+  return seen;
+};
+
+test("a synthetic band world activates its course and removes only the spanned helpers", () => {
+  const r = buildWorld(bandFixture(), tuning, band, 1, { blueprints: [bandCourse] });
+  assert.ok(r.ok);
+  const summary = r.world.courses.find((c) => c.id === "grid-run")!;
+  assert.ok(summary);
+  const entry = r.world.surfaces.find((s) => s.id === summary.entryId)!;
+  const exit = r.world.surfaces.find((s) => s.id === summary.exitId)!;
+  assert.ok(
+    !r.world.surfaces.some(
+      (s) =>
+        s.x === entry.x && s.y > entry.y && s.y < exit.y && s.id.startsWith("helper-"),
+    ),
+  );
+  const backbone = buildWorld(bandFixture(), tuning, band, 1, { courses: false });
+  assert.ok(backbone.ok);
+  const removed = backbone.world.surfaces
+    .filter((s) => !r.world.surfaces.some((t) => t.id === s.id))
+    .map((s) => s.id);
+  assert.deepEqual(removed, ["helper-2-8"]);
+  assert.ok(summary.surfaceIds.every((id) => r.world.surfaces.some((s) => s.id === id)));
+  assert.ok(
+    !r.world.connections.some((c) => c.from === "helper-2-8" || c.to === "helper-2-8"),
+  );
+});
+
+test("every connection of every world replays on the final surface set and is bidirectional", () => {
+  for (const { name, world } of worlds())
+    for (const c of world.connections) {
+      assert.ok(replay(c, world.surfaces, tuning), `${name} ${c.from}>${c.to}`);
+      assert.ok(world.connections.some((d) => d.from === c.to && d.to === c.from));
+    }
+});
+
+test("hero reaches every checkpoint, action ledge and course surface, and each returns to hero", () => {
+  for (const { name, world } of worlds()) {
+    const edges = world.connections.map((c) => [c.from, c.to] as [string, string]);
+    const forward = reach(world.checkpoints.hero, edges);
+    const backward = reach(
+      world.checkpoints.hero,
+      edges.map(([a, b]) => [b, a]),
+    );
+    const required = [
+      ...Object.values(world.checkpoints),
+      ...Object.values(world.actionLedges),
+      ...world.courses.flatMap((c) => c.surfaceIds),
+    ];
+    for (const id of required)
+      assert.ok(forward.has(id) && backward.has(id), `${name} ${id}`);
+  }
+});
+
+test("course corridors and landings are part of the recovery envelope", () => {
+  const r = buildWorld(bandFixture(), tuning, band, 1, { blueprints: [bandCourse] });
+  assert.ok(r.ok);
+  assert.deepEqual(
+    r.world.envelope,
+    routeEnvelope(r.world.surfaces, r.world.connections, tuning),
+  );
+  const floor = r.world.surfaces.find((s) => s.id === "course-grid-run-catch")!;
+  assert.equal(outsidePlayablePath(spawn(floor, tuning), r.world), false);
+});
+
+const supportsWithoutCourses = (
+  snapshot: GeometrySnapshot,
+  width: number,
+  usableHeight: number,
+) =>
+  buildWorld(
+    {
+      ...snapshot,
+      surfaces: snapshot.plannedSurfaces,
+      actionRows: snapshot.plannedActionRows,
+      targets: snapshot.plannedTargets,
+      revealsSettled: true,
+    },
+    tuning,
+    { width, usableHeight },
+    1,
+    { courses: false },
+  ).ok;
+
+test("courses never change availability", () => {
+  for (const v of measuredViewports) {
+    const { snapshot, width, usableHeight } = measuredHomepage(v);
+    assert.equal(
+      viewportSupportsRoute(snapshot, tuning, { width, usableHeight }, 1),
+      supportsWithoutCourses(snapshot, width, usableHeight),
+      v,
+    );
+  }
+  assert.ok(buildWorld(bandFixture(), tuning, band, 1, { blueprints: [bandCourse] }).ok);
+  assert.ok(supportsWithoutCourses(bandFixture(), band.width, band.usableHeight));
+});
+
+test("course worlds are deterministic", () => {
+  const a = buildWorld(bandFixture(), tuning, band, 11, { blueprints: [bandCourse] });
+  const clone = structuredClone({ ...bandFixture(), elements: undefined });
+  const b = buildWorld({ ...clone, elements: new Map() }, tuning, band, 12, {
+    blueprints: [bandCourse],
+  });
+  assert.ok(a.ok && b.ok);
+  assert.ok(a.world.courses.length > 0);
+  assert.deepEqual({ ...a.world, version: 0 }, { ...b.world, version: 0 });
+});
+
+test("no course ledge is a checkpoint and checkpoint ids are unchanged", () => {
+  const withCourses = buildWorld(bandFixture(), tuning, band, 1, {
+    blueprints: [bandCourse],
+  });
+  const backbone = buildWorld(bandFixture(), tuning, band, 1, { courses: false });
+  assert.ok(withCourses.ok && backbone.ok);
+  assert.deepEqual(withCourses.world.checkpoints, backbone.world.checkpoints);
+  const courseIds = new Set(withCourses.world.courses.flatMap((c) => c.surfaceIds));
+  assert.ok(
+    withCourses.world.surfaces.every((s) => !(courseIds.has(s.id) && s.checkpoint)),
+  );
+});
+
+test("a final replay failure removes courses in reverse order down to the backbone", () => {
+  const backbone = buildWorld(bandFixture(), tuning, band, 1, { courses: false });
+  assert.ok(backbone.ok);
+  const broken: World = {
+    ...backbone.world,
+    connections: backbone.world.connections.map((c, i) =>
+      i === 0 ? { ...c, frames: [] } : c,
+    ),
+  };
+  const integrated = integrateCourses(broken, bandFixture(), tuning, 1440, 120, [
+    bandCourse,
+  ]);
+  assert.deepEqual(integrated.courses, []);
+  assert.strictEqual(integrated, broken);
+});
+
+test("a changed keep-out invalidates a cached course validation", () => {
+  const snapshot = bandFixture();
+  const a = buildWorld(snapshot, tuning, band, 13, { blueprints: [bandCourse] });
+  assert.ok(a.ok && a.world.courses.length === 1);
+  snapshot.keepouts.push({ x: 400, y: 1940, width: 40, height: 20 });
+  const b = buildWorld(snapshot, tuning, band, 13, { blueprints: [bandCourse] });
+  assert.ok(b.ok);
+  assert.deepEqual(b.world.courses, []);
+});
+
+test("pending reveals give the same courses as settled geometry or fail as layout", () => {
+  const settled = bandFixture();
+  settled.surfaces = [...settled.plannedSurfaces];
+  const pending: GeometrySnapshot = {
+    ...bandFixture(),
+    surfaces: [],
+    targets: bandFixture().plannedTargets.map((t) => ({ ...t, enabled: false })),
+  };
+  const a = buildWorld(settled, tuning, band, 1, { blueprints: [bandCourse] });
+  const b = buildWorld(pending, tuning, band, 1, { blueprints: [bandCourse] });
+  assert.ok(a.ok);
+  if (b.ok)
+    assert.deepEqual(
+      b.world.courses.map((c) => c.id),
+      a.world.courses.map((c) => c.id),
+    );
+  else assert.deepEqual(b, { ok: false, reason: "layout" });
+  for (const v of measuredViewports) {
+    const { snapshot, width, usableHeight } = measuredHomepage(v);
+    const live = buildWorld(snapshot, tuning, { width, usableHeight }, 1);
+    const early = buildWorld(
+      {
+        ...snapshot,
+        surfaces: [],
+        targets: snapshot.plannedTargets.map((t) => ({ ...t, enabled: false })),
+      },
+      tuning,
+      { width, usableHeight },
+      1,
+    );
+    if (live.ok && early.ok)
+      assert.deepEqual(
+        early.world.courses.map((c) => c.id),
+        live.world.courses.map((c) => c.id),
+        v,
+      );
+  }
+});
+
+test("course integration is identical with settled DOM surfaces and with none", () => {
+  const backbone = buildWorld(bandFixture(), tuning, band, 1, { courses: false });
+  assert.ok(backbone.ok);
+  const withSurfaces = bandFixture();
+  withSurfaces.surfaces = [...withSurfaces.plannedSurfaces];
+  const a = integrateCourses(backbone.world, withSurfaces, tuning, 1440, 120, [
+    bandCourse,
+  ]);
+  const b = integrateCourses(
+    backbone.world,
+    { ...bandFixture(), surfaces: [] },
+    tuning,
+    1440,
+    120,
+    [bandCourse],
+  );
+  assert.ok(a.courses.length > 0);
+  assert.deepEqual(a, b);
+});

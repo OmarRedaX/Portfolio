@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { createSession, transition, restoreSupport, ownsGameKey } from "../../lib/game/session";
 import { spawn, step } from "../../lib/game/physics";
 import type { Tuning } from "../../lib/game/model";
+import { buildWorld } from "../../lib/game/world";
+import { bandCourse, bandFixture } from "./fixtures/band";
 
 const tuning: Tuning = { step: 1 / 120, speed: 240, gravity: 1100, jumpSpeed: 580,
   bodyWidth: 24, bodyHeight: 32, landingMargin: 2, reachX: 110, reachY: 150 };
@@ -190,4 +192,37 @@ test("checkpoint updates survive pauses and repositioning", () => {
   assert.equal(paused.checkpoint, "experience");
   const cleared = transition(paused, { type: "CLEAR_REASON", reason: "browsing" }).state;
   assert.equal(transition(cleared, { type: "RESUME" }).state.checkpoint, "experience");
+});
+
+test("a course ledge that disappears after a resize is never restored; the paused session stays paused", () => {
+  const tuning: Tuning = {
+    step: 1 / 120,
+    speed: 240,
+    gravity: 1100,
+    jumpSpeed: 580,
+    bodyWidth: 24,
+    bodyHeight: 32,
+    landingMargin: 2,
+    reachX: 110,
+    reachY: 150,
+  };
+  const viewport = { width: 1440, usableHeight: 700 };
+  const a = buildWorld(bandFixture(), tuning, viewport, 1, { blueprints: [bandCourse] });
+  const b = buildWorld(bandFixture(), tuning, viewport, 2, { courses: false });
+  assert.ok(a.ok && b.ok);
+  const ledge = a.world.surfaces.find((s) => s.id === "course-grid-run-u2")!;
+  const body = spawn(ledge, tuning);
+  assert.equal(
+    restoreSupport(body, a.world.surfaces, b.world.surfaces, b.world.obstacles, 1440),
+    null,
+  );
+  const playing = {
+    ...createSession(),
+    phase: "playing" as const,
+    operation: 1,
+    layoutValid: true,
+  };
+  const paused = transition(playing, { type: "PAUSE", reason: "layout" });
+  const revalidated = transition(paused.state, { type: "VALIDATED", valid: true });
+  assert.equal(revalidated.state.phase, "paused");
 });
