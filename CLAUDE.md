@@ -33,8 +33,9 @@ agent-rules block appended at the bottom of this file is auto-managed by `next d
 the note at the end of this file, leave it in place; never write its begin/end HTML-comment
 markers elsewhere in this file, since `next dev` treats the first begin marker it finds as the
 block start and overwrites everything after it). `AGENTS.md` carries the same guidance for
-Codex; keep the two in sync. `README.md` is intentionally minimal and links back here rather than
-duplicating it.
+Codex; keep the two in sync. `README.md` is the human-facing
+overview (features, Game Mode, setup, env vars, structure); keep it current, and leave
+conventions and rules here rather than duplicating them there.
 
 ## Tech Stack (locked — implementation-plan.md §2)
 
