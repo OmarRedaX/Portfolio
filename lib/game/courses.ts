@@ -1,13 +1,17 @@
 import {
   sectionIds,
+  type Connection,
   type CourseId,
+  type CourseSummary,
   type GeometrySnapshot,
   type Rect,
   type SectionId,
   type Surface,
   type Tier,
   type Tuning,
+  type World,
 } from "./model";
+import { clearOf, maxSurfaces, timingWindow, walkOffWitness, witness } from "./witness";
 
 export const tierOrder: readonly Tier[] = ["comfortable", "easy", "medium", "challenge"];
 export const tierRules: Record<
@@ -289,10 +293,13 @@ export function compileCourse(
   return inside ? surfaces : null;
 }
 
+// gradeWidth is false for a landing on a backbone surface: its width belongs to
+// the already-validated lane, not to the course's difficulty.
 export function edgeTier(
   window: number | "walk",
   from: Surface,
   to: Surface,
+  gradeWidth = true,
 ): Tier | null {
   const frames = window === "walk" ? Infinity : window;
   const gap = Math.max(0, to.x - (from.x + from.width), from.x - (to.x + to.width));
@@ -302,10 +309,388 @@ export function edgeTier(
       const rules = tierRules[tier];
       return (
         frames >= rules.minWindow &&
-        to.width >= rules.minWidth &&
+        (!gradeWidth || to.width >= rules.minWidth) &&
         gap <= rules.maxGap &&
         rise <= rules.maxRise
       );
     }) ?? null
   );
+}
+
+export type CourseRejection =
+  | "zone"
+  | "placement"
+  | "isolation"
+  | "witness"
+  | "tier"
+  | "rhythm"
+  | "catch"
+  | "graph"
+  | "budget";
+export type CourseContext = {
+  world: World;
+  snapshot: GeometrySnapshot;
+  tuning: Tuning;
+  viewportWidth: number;
+  laneX: number;
+  acceptedCourseRects: Rect[];
+};
+export type CourseResult =
+  | {
+      ok: true;
+      summary: CourseSummary;
+      surfaces: Surface[];
+      connections: Connection[];
+      removedIds: string[];
+      corridor: Rect[];
+    }
+  | { ok: false; reason: CourseRejection };
+
+const maxCourseSurfaces = 12;
+const restWidth = 96;
+const maxChallengeCourses = 2;
+const maxChallengeEdges = 3;
+
+type Edge = {
+  connection: Connection;
+  outcomes: Array<string | null>;
+  tier: Tier | null;
+};
+
+const harder = (a: Tier, b: Tier) =>
+  tierOrder.indexOf(a) >= tierOrder.indexOf(b) ? a : b;
+const line = (s: Surface): Rect => ({ x: s.x, y: s.y, width: s.width, height: 0 });
+
+function reachable(
+  start: string,
+  connections: readonly Connection[],
+  reverse = false,
+): Set<string> {
+  const seen = new Set([start]);
+  const queue = [start];
+  while (queue.length) {
+    const at = queue.shift()!;
+    for (const c of connections) {
+      const [a, b] = reverse ? [c.to, c.from] : [c.from, c.to];
+      if (a === at && !seen.has(b)) {
+        seen.add(b);
+        queue.push(b);
+      }
+    }
+  }
+  return seen;
+}
+
+export function validateCourse(
+  blueprint: CourseBlueprint,
+  context: CourseContext,
+): CourseResult {
+  const { world, snapshot, tuning, viewportWidth, laneX } = context;
+  const reject = (reason: CourseRejection): CourseResult => ({ ok: false, reason });
+
+  const zone = findZone(blueprint, snapshot, viewportWidth, laneX, tuning);
+  const compiled = zone && compileCourse(blueprint, zone, snapshot, tuning);
+  if (!zone || !compiled) return reject("zone");
+
+  // The entry's standing body starts at the zone top, so the first ledge is at
+  // most one helper spacing below it; the exit's line is at the zone bottom.
+  const lane = world.surfaces
+    .filter((surface) => surface.x === laneX)
+    .sort((a, b) => a.y - b.y);
+  const entry = lane.filter((s) => s.y - tuning.bodyHeight <= zone.rect.y + 8).at(-1);
+  const exit = entry && lane.find((s) => s.y > entry.y && s.y >= bottomOf(zone.rect) - 8);
+  const removed = entry && exit ? lane.filter((s) => s.y > entry.y && s.y < exit.y) : [];
+  const removedIds = removed.map((s) => s.id);
+
+  if (
+    compiled.length > maxCourseSurfaces ||
+    world.surfaces.length - removed.length + compiled.length > maxSurfaces
+  )
+    return reject("budget");
+
+  const rules = tierRules[blueprint.tier];
+  const catchIds =
+    blueprint.layout === "ledges"
+      ? blueprint.ledges
+          .filter((spec) => spec.catch)
+          .map((spec) => `course-${blueprint.id}-${spec.id}`)
+      : [];
+  const keepouts = [
+    ...snapshot.keepouts,
+    ...snapshot.obstacles,
+    ...actionRows(snapshot).map((row) => row.rect),
+    ...[...snapshot.targets, ...snapshot.plannedTargets]
+      .filter((target) => target.enabled)
+      .map((target) => target.rect),
+    ...sectionIds.map((id) => snapshot.sectionAnchors[id]),
+  ];
+  const misplaced = compiled.some(
+    (s) =>
+      s.x < 0 ||
+      s.x + s.width > viewportWidth ||
+      (!catchIds.includes(s.id) && s.width < rules.minWidth) ||
+      keepouts.some(
+        (rect) =>
+          !clearOf(
+            {
+              x: s.x,
+              y: s.y - tuning.bodyHeight,
+              width: s.width,
+              height: tuning.bodyHeight,
+            },
+            rect,
+            courseClearance,
+          ),
+      ),
+  );
+  if (misplaced) return reject("placement");
+
+  const otherEnds = new Set(world.courses.flatMap((c) => [c.entryId, c.exitId]));
+  if (
+    !entry ||
+    !exit ||
+    removed.some((s) => !s.id.startsWith("helper-") || otherEnds.has(s.id))
+  )
+    return reject("isolation");
+
+  const surfaces = [
+    ...world.surfaces.filter((s) => !removedIds.includes(s.id)),
+    ...compiled,
+  ];
+  const courseIds = new Set(compiled.map((s) => s.id));
+  const prove = (from: Surface, to: Surface): Edge | null => {
+    const walked = witness(
+      from,
+      to,
+      surfaces,
+      keepouts,
+      tuning,
+      viewportWidth,
+      courseClearance,
+    );
+    const walk =
+      walked && !walked.frames.some((input) => input.jumpPressed)
+        ? walked
+        : walkOffWitness(
+            from,
+            to,
+            surfaces,
+            keepouts,
+            tuning,
+            viewportWidth,
+            courseClearance,
+          );
+    const gradeWidth = courseIds.has(to.id);
+    if (walk)
+      return {
+        connection: walk,
+        outcomes: [],
+        tier: edgeTier("walk", from, to, gradeWidth),
+      };
+    const sweep = timingWindow(
+      from,
+      to,
+      surfaces,
+      keepouts,
+      tuning,
+      viewportWidth,
+      courseClearance,
+    );
+    return sweep.best
+      ? {
+          connection: sweep.best,
+          outcomes: sweep.outcomes,
+          tier: edgeTier(sweep.frames, from, to, gradeWidth),
+        }
+      : null;
+  };
+
+  const chain = [entry, ...compiled, exit];
+  const pairs: Array<{ index: number; forward: Edge; backward: Edge }> = [];
+  for (let i = 0; i + 1 < chain.length; i++) {
+    const forward = prove(chain[i], chain[i + 1]);
+    const backward = forward && prove(chain[i + 1], chain[i]);
+    if (!forward || !backward) return reject("witness");
+    pairs.push({ index: i, forward, backward });
+  }
+  // A catch floor also links to its nearest non-adjacent ledge when that link
+  // is proved both ways within the course tier; it shortens recovery.
+  const links: Edge[] = [];
+  for (const id of catchIds) {
+    const at = chain.findIndex((s) => s.id === id);
+    const floor = chain[at];
+    const nearest = chain
+      .map((s, index) => ({ s, index }))
+      .filter(
+        ({ s, index }) =>
+          courseIds.has(s.id) && !catchIds.includes(s.id) && Math.abs(index - at) > 1,
+      )
+      .map(({ s }) => ({
+        s,
+        distance: Math.hypot(
+          Math.max(
+            0,
+            floor.x - (s.x + s.width / 2),
+            s.x + s.width / 2 - (floor.x + floor.width),
+          ),
+          s.y - floor.y,
+        ),
+      }))
+      .sort((a, b) => a.distance - b.distance)[0]?.s;
+    const up = nearest && prove(floor, nearest);
+    const down = up && nearest && prove(nearest, floor);
+    if (
+      up?.tier &&
+      down?.tier &&
+      tierOrder.indexOf(harder(up.tier, down.tier)) <= tierOrder.indexOf(blueprint.tier)
+    )
+      links.push(up, down);
+  }
+  const edges = [...pairs.flatMap((p) => [p.forward, p.backward]), ...links];
+  const connections = edges.map((edge) => edge.connection);
+
+  const guarded = [...snapshot.plannedSurfaces.map(line), ...context.acceptedCourseRects];
+  const backbone = world.surfaces
+    .filter((s) => !removedIds.includes(s.id) && s.id !== entry.id && s.id !== exit.id)
+    .map(line);
+  const crosses = connections.some((c) =>
+    c.corridor.some(
+      (rect) =>
+        guarded.some(
+          (other) =>
+            !clearOf(
+              {
+                x: rect.x - tuning.bodyWidth,
+                y: rect.y - tuning.bodyWidth,
+                width: rect.width + 2 * tuning.bodyWidth,
+                height: rect.height + 2 * tuning.bodyWidth,
+              },
+              other,
+            ),
+        ) || backbone.some((other) => !clearOf(rect, other)),
+    ),
+  );
+  if (crosses) return reject("isolation");
+
+  if (
+    edges.some(
+      (edge) =>
+        !edge.tier || tierOrder.indexOf(edge.tier) > tierOrder.indexOf(blueprint.tier),
+    )
+  )
+    return reject("tier");
+
+  const pairTier = pairs.map((p) => harder(p.forward.tier!, p.backward.tier!));
+  const challenging = pairTier.filter((tier) => tier === "challenge").length;
+  const crowded = pairTier.some(
+    (tier, i) =>
+      i > 0 &&
+      tier === "challenge" &&
+      pairTier[i - 1] === "challenge" &&
+      chain[i].width < restWidth,
+  );
+  const challengeCourses = world.courses.filter((c) => c.tier === "challenge").length;
+  if (
+    challenging > maxChallengeEdges ||
+    crowded ||
+    (blueprint.tier === "challenge" && challengeCourses >= maxChallengeCourses)
+  )
+    return reject("rhythm");
+
+  // A missed medium or challenge jump must land somewhere from which the
+  // approach to that jump is at most two comfortable or easy edges away.
+  const gentle = edges
+    .filter((edge) => edge.tier === "comfortable" || edge.tier === "easy")
+    .map((edge) => edge.connection);
+  const within = (start: string, goals: Set<string>) => {
+    let frontier = new Set([start]);
+    const seen = new Set([start]);
+    for (let depth = 0; depth <= 2; depth++) {
+      if ([...frontier].some((id) => goals.has(id))) return true;
+      const next = new Set<string>();
+      for (const c of gentle)
+        if (frontier.has(c.from) && !seen.has(c.to)) {
+          seen.add(c.to);
+          next.add(c.to);
+        }
+      frontier = next;
+    }
+    return false;
+  };
+  const uncaught = pairs.some(({ index, forward, backward }) =>
+    [
+      { edge: forward, approach: chain.slice(0, index + 1) },
+      { edge: backward, approach: chain.slice(index + 1) },
+    ].some(
+      ({ edge, approach }) =>
+        (edge.tier === "medium" || edge.tier === "challenge") &&
+        edge.outcomes.some(
+          (outcome) =>
+            outcome !== edge.connection.to &&
+            (outcome === null || !within(outcome, new Set(approach.map((s) => s.id)))),
+        ),
+    ),
+  );
+  if (uncaught) return reject("catch");
+
+  const finalConnections = [
+    ...world.connections.filter(
+      (c) =>
+        !removedIds.includes(c.from) &&
+        !removedIds.includes(c.to) &&
+        !crossesSpan(c, lane, entry, exit),
+    ),
+    ...connections,
+  ];
+  const hero = world.checkpoints.hero;
+  const forward = reachable(hero, finalConnections);
+  const backward = reachable(hero, finalConnections, true);
+  const required = [
+    ...Object.values(world.checkpoints),
+    ...Object.values(world.actionLedges),
+    ...Object.values(world.targetLedges),
+  ];
+  if (
+    required.some((id) => !forward.has(id)) ||
+    compiled.some((s) => !forward.has(s.id) || !backward.has(s.id))
+  )
+    return reject("graph");
+
+  return {
+    ok: true,
+    summary: {
+      id: blueprint.id,
+      section: blueprint.section,
+      tier: blueprint.tier,
+      entryId: entry.id,
+      exitId: exit.id,
+      surfaceIds: compiled.map((s) => s.id),
+      catchIds,
+      edgeTiers: Object.fromEntries(
+        edges.map((edge) => [
+          `${edge.connection.from}>${edge.connection.to}`,
+          edge.tier!,
+        ]),
+      ),
+    },
+    surfaces: compiled,
+    connections,
+    removedIds,
+    corridor: connections.flatMap((c) => c.corridor),
+  };
+}
+
+// A lane-to-lane backbone link that jumps the replaced span would bypass the
+// course, so it is replaced along with the helpers.
+function crossesSpan(
+  connection: Connection,
+  lane: readonly Surface[],
+  entry: Surface,
+  exit: Surface,
+): boolean {
+  const from = lane.find((s) => s.id === connection.from);
+  const to = lane.find((s) => s.id === connection.to);
+  if (!from || !to) return false;
+  const [upper, lower] = from.y < to.y ? [from, to] : [to, from];
+  return upper.y <= entry.y && lower.y >= exit.y;
 }

@@ -5,9 +5,24 @@ import {
   compileCourse,
   edgeTier,
   findZone,
+  tierOrder,
+  validateCourse,
   type CourseBlueprint,
+  type CourseContext,
+  type CourseRejection,
+  type LedgeSpec,
+  type Zone,
 } from "../../lib/game/courses";
-import type { CourseId, Surface, Tuning } from "../../lib/game/model";
+import type {
+  CourseId,
+  CourseSummary,
+  GeometrySnapshot,
+  Surface,
+  Tuning,
+  World,
+} from "../../lib/game/model";
+import { replay } from "../../lib/game/witness";
+import { buildWorld } from "../../lib/game/world";
 import { bandFixture } from "./fixtures/band";
 import { measuredHomepage } from "./fixtures/rendered-homepage";
 
@@ -42,6 +57,13 @@ test("edge tiers follow the floor table and reject frame-perfect jumps", () => {
   assert.equal(edgeTier(30, a, b), "easy"); // gap 44, rise 40, width 64
   assert.equal(edgeTier(13, a, surf("n", 250, 40, 400)), "challenge");
   assert.equal(edgeTier(11, a, surf("n", 250, 40, 400)), null);
+});
+
+test("a landing on a narrow backbone lane is graded without its width", () => {
+  const a = surf("a", 0, 96, 500),
+    lane = surf("lane", 140, 12, 460);
+  assert.equal(edgeTier(30, a, lane), null);
+  assert.equal(edgeTier(30, a, lane, false), "easy");
 });
 
 test("band zone sits between section N content and section N+1 heading, lane-side first", () => {
@@ -159,4 +181,250 @@ test("rungs align to Experience keep-out tops and alternate lanes", () => {
     assert.notEqual(sorted[i].x, sorted[i - 1].x);
     assert.ok(sorted[i].y - sorted[i - 1].y <= 96);
   }
+});
+
+// A challenge course in the About→Tech Stack band of bandFixture(): a drop from
+// the lane entry, a low run with widening gaps, a rest ledge, and a catch floor
+// that returns to the Tech Stack checkpoint. Jumps stay low in the band so the
+// body clears the About content above by the course clearance on every frame.
+const testCourse: CourseBlueprint = {
+  id: "grid-run",
+  section: "about",
+  zone: "band",
+  tier: "challenge",
+  layout: "ledges",
+  ledges: [
+    { id: "d1", x: 0, y: { top: 104 }, width: 48 },
+    { id: "u1", x: 96, y: { bottom: 48 }, width: 64 },
+    { id: "u2", x: 272, y: { bottom: 48 }, width: 48 },
+    { id: "rest", x: 464, y: { bottom: 48 }, width: 112 },
+    { id: "catch", x: 48, y: { bottom: 0 }, width: 560, catch: true },
+  ],
+};
+
+type Fixture = {
+  snapshot: GeometrySnapshot;
+  world: World;
+  blueprint: CourseBlueprint;
+  zone: Zone;
+};
+
+function baseFixture(): Fixture {
+  const snapshot = bandFixture();
+  const built = buildWorld(snapshot, tuning, { width: 1440, usableHeight: 700 }, 1);
+  assert.ok(built.ok);
+  return {
+    snapshot: bandFixture(),
+    world: built.world,
+    blueprint: testCourse,
+    zone: findZone(testCourse, snapshot, 1440, 120, tuning)!,
+  };
+}
+
+const contextOf = (f: Fixture): CourseContext => ({
+  world: f.world,
+  snapshot: f.snapshot,
+  tuning,
+  viewportWidth: 1440,
+  laneX: 120,
+  acceptedCourseRects: [],
+});
+
+function ledgesOf(blueprint: CourseBlueprint): readonly LedgeSpec[] {
+  assert.equal(blueprint.layout, "ledges");
+  return blueprint.layout === "ledges" ? blueprint.ledges : [];
+}
+
+const withLedges = (blueprint: CourseBlueprint, ledges: LedgeSpec[]): CourseBlueprint =>
+  blueprint.layout === "ledges" ? { ...blueprint, ledges } : blueprint;
+
+const withLedge = (blueprint: CourseBlueprint, id: string, patch: Partial<LedgeSpec>) =>
+  withLedges(
+    blueprint,
+    ledgesOf(blueprint).map((ledge) =>
+      ledge.id === id ? { ...ledge, ...patch } : ledge,
+    ),
+  );
+
+const filler = (count: number): Surface[] =>
+  Array.from({ length: count }, (_, i) => ({
+    id: `filler-${i}`,
+    section: "contact" as const,
+    x: 1400,
+    y: 20000 + 40 * i,
+    width: 8,
+    checkpoint: false,
+  }));
+
+const challengeSummary = (id: CourseId): CourseSummary => ({
+  id,
+  section: "projects",
+  tier: "challenge",
+  entryId: "x",
+  exitId: "y",
+  surfaceIds: [],
+  catchIds: [],
+  edgeTiers: {},
+});
+
+const cases: Array<[string, CourseRejection, (f: Fixture) => void]> = [
+  [
+    "a band too short for the course",
+    "zone",
+    (f) => {
+      f.snapshot.sectionAnchors["tech-stack"] = {
+        ...f.snapshot.sectionAnchors["tech-stack"],
+        y: f.zone.rect.y + 80,
+      };
+    },
+  ],
+  [
+    "a ledge whose standing body meets an enabled link",
+    "placement",
+    (f) => {
+      f.snapshot.plannedTargets.push({
+        id: "stray-link",
+        label: "Stray",
+        order: 99,
+        rect: { x: 400, y: f.zone.rect.y + 150, width: 40, height: 20 },
+        enabled: true,
+      });
+    },
+  ],
+  [
+    "a ledge narrower than its tier allows",
+    "placement",
+    (f) => {
+      f.blueprint = withLedge(f.blueprint, "u2", { width: 32 });
+    },
+  ],
+  [
+    "a corridor crossing a registered card top",
+    "isolation",
+    (f) => {
+      f.snapshot.plannedSurfaces.push({
+        id: "card-top",
+        section: "about",
+        x: 400,
+        y: f.zone.rect.y + 100,
+        width: 300,
+        checkpoint: false,
+      });
+    },
+  ],
+  [
+    "an unreachable ledge",
+    "witness",
+    (f) => {
+      f.blueprint = withLedge(f.blueprint, "rest", { x: 900 });
+    },
+  ],
+  [
+    "edges harder than the declared tier",
+    "tier",
+    (f) => {
+      f.blueprint = withLedges(
+        { ...f.blueprint, tier: "comfortable" },
+        ledgesOf(f.blueprint).map((ledge) =>
+          ledge.catch ? ledge : { ...ledge, width: Math.max(96, ledge.width) },
+        ),
+      );
+    },
+  ],
+  [
+    "two challenge edges without a rest ledge between them",
+    "rhythm",
+    (f) => {
+      f.blueprint = withLedge(f.blueprint, "u2", { width: 40 });
+    },
+  ],
+  [
+    "a third challenge course",
+    "rhythm",
+    (f) => {
+      f.world = {
+        ...f.world,
+        courses: [challengeSummary("grid-run"), challengeSummary("precision-ledges")],
+      };
+    },
+  ],
+  [
+    "a catch floor with a hole under a challenge gap",
+    "catch",
+    (f) => {
+      f.blueprint = withLedges(f.blueprint, [
+        ...ledgesOf(f.blueprint).filter((ledge) => !ledge.catch),
+        { id: "catch-far", x: 448, y: { bottom: 0 }, width: 200, catch: true },
+        { id: "catch-near", x: 48, y: { bottom: 0 }, width: 304, catch: true },
+      ]);
+    },
+  ],
+  [
+    "an action ledge reachable only through a replaced helper",
+    "graph",
+    (f) => {
+      const stray: Surface = {
+        id: "branch-stray",
+        section: "about",
+        x: 1300,
+        y: 1918,
+        width: 32,
+        checkpoint: false,
+      };
+      f.world = {
+        ...f.world,
+        surfaces: [...f.world.surfaces, stray],
+        connections: [
+          ...f.world.connections,
+          { from: "helper-2-8", to: stray.id, frames: [], corridor: [] },
+          { from: stray.id, to: "helper-2-8", frames: [], corridor: [] },
+        ],
+        actionLedges: { ...f.world.actionLedges, "stray-actions": stray.id },
+      };
+    },
+  ],
+  [
+    "a world with no room for the course surfaces",
+    "budget",
+    (f) => {
+      f.world = { ...f.world, surfaces: [...f.world.surfaces, ...filler(150)] };
+    },
+  ],
+];
+
+for (const [name, reason, mutate] of cases)
+  test(`course rejects (${reason}): ${name}`, () => {
+    const f = baseFixture();
+    mutate(f);
+    assert.deepEqual(validateCourse(f.blueprint, contextOf(f)), { ok: false, reason });
+  });
+
+test("an accepted course replaces the spanned helpers with bidirectional, replayable witnesses within its tier", () => {
+  const f = baseFixture();
+  const started = performance.now();
+  const r = validateCourse(f.blueprint, contextOf(f));
+  const elapsed = performance.now() - started;
+  assert.ok(r.ok);
+  assert.equal(r.summary.entryId, "helper-2-7");
+  assert.equal(r.summary.exitId, "checkpoint-tech-stack");
+  assert.deepEqual(r.removedIds, ["helper-2-8"]);
+  assert.deepEqual(r.summary.catchIds, ["course-grid-run-catch"]);
+  assert.deepEqual(
+    r.summary.surfaceIds,
+    ledgesOf(testCourse).map((ledge) => `course-grid-run-${ledge.id}`),
+  );
+  const final = [
+    ...f.world.surfaces.filter((s) => !r.removedIds.includes(s.id)),
+    ...r.surfaces,
+  ];
+  for (const c of r.connections) {
+    assert.ok(replay(c, final, tuning), `${c.from}>${c.to}`);
+    assert.ok(r.connections.some((d) => d.from === c.to && d.to === c.from));
+    assert.ok(r.summary.edgeTiers[`${c.from}>${c.to}`]);
+  }
+  for (const t of Object.values(r.summary.edgeTiers))
+    assert.ok(tierOrder.indexOf(t) <= tierOrder.indexOf(r.summary.tier));
+  assert.ok(Object.values(r.summary.edgeTiers).includes("challenge"));
+  assert.ok(r.corridor.length > 0);
+  assert.ok(elapsed < 50, `validateCourse took ${elapsed.toFixed(1)} ms`);
 });
