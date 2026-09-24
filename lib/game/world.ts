@@ -645,6 +645,29 @@ export function buildWorld(
   return remember({ ok: false, reason: "layout" });
 }
 
+// Whether this viewport can host the route once every reveal has settled.
+// Reveal state is transient; missing room beside the content or too little
+// usable height is not, so only the latter makes Game Mode unavailable.
+export function viewportSupportsRoute(
+  snapshot: GeometrySnapshot,
+  tuning: Tuning,
+  viewport: { width: number; usableHeight: number },
+  version: number,
+): boolean {
+  return buildWorld(
+    {
+      ...snapshot,
+      surfaces: snapshot.plannedSurfaces,
+      actionRows: snapshot.plannedActionRows,
+      targets: snapshot.plannedTargets,
+      revealsSettled: true,
+    },
+    tuning,
+    viewport,
+    version,
+  ).ok;
+}
+
 export function outsidePlayablePath(body: Body, world: World): boolean {
   if (world.envelope.some((rect) => !clear(bodyRect(body), rect))) return false;
   // A body falling toward a registered lower support remains on a recoverable descent.

@@ -10,10 +10,10 @@ import type { Body, GeometrySnapshot, SessionEvent, SessionState, Tuning, World 
 import { spawn, step } from "@/lib/game/physics";
 import { createScrollCoordinator, followDelta } from "@/lib/game/scroll";
 import { createSession, ownsGameKey, restoreSupport, transition } from "@/lib/game/session";
-import { buildWorld, outsidePlayablePath } from "@/lib/game/world";
+import { buildWorld, outsidePlayablePath, viewportSupportsRoute } from "@/lib/game/world";
 import { GameView, type GameViewHandle } from "./game-view";
 
-export type GameSessionProps = { onExit: () => void; trigger: HTMLButtonElement };
+export type GameSessionProps = { onExit: (reason?: "viewport") => void; trigger: HTMLButtonElement };
 
 // The same measured tuning used by the route witnesses in world.test.ts.
 const tuning: Tuning = {
@@ -24,8 +24,9 @@ const emptyBody: Body = { x: 0, y: 0, width: 24, height: 32, vx: 0, vy: 0, groun
 type Presentation = {
   state: SessionState; world: World | null; label: string | null;
   headerBottom: number; width: number; height: number; helpers: ReadonlySet<string>;
+  unsupported: boolean;
 };
-type Controller = { resume(): void; exit(): void; depart(): void; controlsChanged(): void };
+type Controller = { resume(): void; exit(reason?: "viewport"): void; depart(): void; controlsChanged(): void };
 
 export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.Element {
   const pathname = usePathname();
@@ -37,7 +38,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
   const controller = useRef<Controller | null>(null);
   const [presentation, setPresentation] = useState<Presentation>({
     state: { ...createSession(), phase: "repositioning" }, world: null, label: null,
-    headerBottom: 0, width: 0, height: 0, helpers: new Set(),
+    headerBottom: 0, width: 0, height: 0, helpers: new Set(), unsupported: false,
   });
   const onControlsHeight = useCallback((height: number) => {
     if (Math.abs(controlsHeight.current - height) < 0.5) return;
@@ -72,6 +73,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
     let width = document.documentElement.clientWidth;
     let height = Math.max(innerHeight, document.body.getBoundingClientRect().bottom + scrollY);
     let helpers: ReadonlySet<string> = new Set();
+    let unsupported = false;
     let operation: AbortController | null = null;
     let destination: HTMLElement | null = null;
     const held = new Set<string>();
@@ -79,7 +81,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
     document.documentElement.dataset.gameMode = "active";
 
     function publish() {
-      if (alive) setPresentation({ state, world, label, headerBottom, width, height, helpers });
+      if (alive) setPresentation({ state, world, label, headerBottom, width, height, helpers, unsupported });
     }
     function clearSelection() {
       selected = painted = presented = null;
@@ -197,13 +199,22 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
       const oldWorld = world;
       if (oldWorld && !force) pause("layout");
       headerBottom = Math.max(0, next.headerBottom);
-      const result = buildWorld(next, tuning, {
+      const viewport = {
         width: innerWidth,
         usableHeight: (window.visualViewport?.height ?? innerHeight) - headerBottom - controlsHeight.current,
-      }, ++version);
+      };
+      const result = buildWorld(next, tuning, viewport, ++version);
       geometryKey = key;
       geometry = next;
-      if (!result.ok) { send({ type: "VALIDATED", valid: false }); return false; }
+      if (!result.ok) {
+        // Only a viewport that cannot host the settled route is unavailable;
+        // before any world exists that ends the session at the entry.
+        unsupported = !viewportSupportsRoute(next, tuning, viewport, version);
+        if (unsupported && !world) { controller.current?.exit("viewport"); return false; }
+        send({ type: "VALIDATED", valid: false });
+        return false;
+      }
+      unsupported = false;
       world = result.world;
       const checkpoint = state.checkpoint ?? world.checkpoints.hero;
       const landing = world.surfaces.find((surface) => surface.id === checkpoint);
@@ -363,10 +374,10 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
         send({ type: "RESUME" });
         void reposition();
       },
-      exit() {
+      exit(reason) {
         send({ type: "EXIT" });
         dispose();
-        onExit();
+        onExit(reason);
         const fallback = trigger.isConnected ? trigger : document.getElementById("main-content");
         fallback?.focus({ preventScroll: true });
       },
@@ -386,7 +397,7 @@ export function GameSession({ onExit, trigger }: GameSessionProps): React.JSX.El
     <GameView bodyRef={body} viewRef={view} world={presentation.world}
       activeCheckpoint={state.checkpoint} phase={state.phase}
       canResume={state.layoutValid && !blocker} selectedLabel={presentation.label}
-      pauseMessage={blocker ? gameMode.pauseReasons[blocker] : gameMode.paused}
+      pauseMessage={presentation.unsupported ? gameMode.largerWindowPaused : blocker ? gameMode.pauseReasons[blocker] : gameMode.paused}
       headerBottom={presentation.headerBottom} documentWidth={presentation.width}
       documentHeight={presentation.height} helperSurfaceIds={presentation.helpers}
       onControlsHeight={onControlsHeight}

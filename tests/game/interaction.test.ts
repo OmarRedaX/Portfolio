@@ -142,6 +142,7 @@ function snapshotWith(
     obstacles: [],
     actionRows: [],
     plannedActionRows: [],
+    plannedTargets: [],
     headerBottom: 0,
     revealsSettled: true,
   };

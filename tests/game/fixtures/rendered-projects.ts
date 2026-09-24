@@ -13,6 +13,7 @@ export function settledProjects(): GeometrySnapshot {
     surfaces: [],
     plannedSurfaces: [],
     targets: [],
+    plannedTargets: [],
     elements: new Map(),
     sectionBounds: {
       hero: box(0, 123, 1424.800048828125, 827),
@@ -213,6 +214,7 @@ export function settledProjects(): GeometrySnapshot {
     rect: box(x, y, width, height),
     enabled,
   }));
+  snapshot.plannedTargets = snapshot.targets.map((target) => ({ ...target, enabled: true }));
   const supports: Array<[string, SectionId, number, number, number]> = [
     ["stack-frontend-top", "tech-stack", 184.40000915527344, 2076.4000244140625, 516],
     ["stack-backend-top", "tech-stack", 724.4000244140625, 2076.4000244140625, 516],

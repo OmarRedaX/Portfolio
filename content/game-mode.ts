@@ -19,6 +19,7 @@ export const gameMode = {
   exitGame: "Exit Game Mode",
   resume: "Resume Game",
   largerWindow: "Larger window required",
+  largerWindowPaused: "Larger window required.",
   keyboardRequired: "Keyboard required",
   loading: "Preparing Game Mode…",
   preparation: "Game Mode is not ready to play yet. You can continue browsing or exit.",

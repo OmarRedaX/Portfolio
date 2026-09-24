@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildWorld, outsidePlayablePath } from "../../lib/game/world";
+import { buildWorld, outsidePlayablePath, viewportSupportsRoute } from "../../lib/game/world";
 import { spawn, step } from "../../lib/game/physics";
 import { createSession, transition } from "../../lib/game/session";
 import { settledProjects } from "./fixtures/rendered-projects";
@@ -40,6 +40,7 @@ function fixture(gap = 760): GeometrySnapshot {
     surfaces: [],
     plannedSurfaces: [],
     targets: [],
+    plannedTargets: [],
     elements: new Map(),
     sectionBounds,
     sectionAnchors,
@@ -416,6 +417,7 @@ function measured1024(): GeometrySnapshot {
     checkpoint: false,
   }));
   snapshot.surfaces = [...snapshot.plannedSurfaces];
+  snapshot.plannedTargets = snapshot.targets.map((target) => ({ ...target, enabled: true }));
   return snapshot;
 }
 
@@ -453,6 +455,33 @@ test("a Contact arrival before Projects has revealed keeps a witnessed 1024px ro
       ),
     );
   }
+});
+
+test("a viewport without permanent side room for the route is unsupported", () => {
+  // Measured without a classic scrollbar at 768px: content spans 32–736, so
+  // neither 32px gutter lets the 24px body step off a helper inside the viewport.
+  const overlay = fixture();
+  for (const id of sectionIds) overlay.sectionAnchors[id] = { ...overlay.sectionAnchors[id], width: 704 };
+  const viewport = { width: 768, usableHeight: 705 };
+  assert.deepEqual(buildWorld(overlay, tuning, viewport, 1), { ok: false, reason: "layout" });
+  assert.equal(viewportSupportsRoute(overlay, tuning, viewport, 1), false);
+  // A classic scrollbar ends content at 721 while innerWidth stays 768.
+  assert.equal(viewportSupportsRoute(fixture(), tuning, viewport, 1), true);
+  assert.equal(viewportSupportsRoute(fixture(), tuning, { width: 768, usableHeight: 120 }, 1), false);
+});
+
+test("transient reveal state never makes a supported viewport unsupported", () => {
+  const snapshot = measured1024();
+  const revealing = {
+    ...snapshot,
+    surfaces: [],
+    actionRows: [],
+    targets: snapshot.targets.map((target) => ({ ...target, enabled: false })),
+    revealsSettled: false,
+  };
+  const viewport = { width: 1024, usableHeight: 705 };
+  assert.deepEqual(buildWorld(revealing, tuning, viewport, 6), { ok: false, reason: "layout" });
+  assert.equal(viewportSupportsRoute(revealing, tuning, viewport, 6), true);
 });
 
 test("both ends of a wide action row have reachable registered links", () => {

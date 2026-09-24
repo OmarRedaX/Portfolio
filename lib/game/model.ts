@@ -42,6 +42,8 @@ export type GeometrySnapshot = {
   surfaces: Surface[];
   plannedSurfaces: Surface[];
   targets: TargetBox[];
+  // Targets as they will be once every reveal settles; enabled ignores reveal state.
+  plannedTargets: TargetBox[];
   elements: Map<string, HTMLElement>;
   sectionBounds: Record<SectionId, Rect>;
   sectionAnchors: Record<SectionId, Rect>;

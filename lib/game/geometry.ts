@@ -78,6 +78,7 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
   const elements = new Map<string, HTMLElement>();
   const surfaces: Surface[] = [];
   const targets: TargetBox[] = [];
+  const plannedTargets: TargetBox[] = [];
   const obstacles: Rect[] = [];
   let revealsSettled = true;
   const sectionAnchors = emptyBounds();
@@ -139,17 +140,19 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
     if (element.dataset.gameTarget) {
       const id = element.dataset.gameTarget;
       if (!elements.has(id)) elements.set(id, element);
-      targets.push({
+      const usable =
+        isVisible &&
+        !element.hasAttribute("disabled") &&
+        element.getAttribute("aria-disabled") !== "true";
+      const target = {
         id,
         label: element.textContent?.trim() ?? "",
         order: targets.length,
         rect,
-        enabled:
-          isVisible &&
-          settled &&
-          !element.hasAttribute("disabled") &&
-          element.getAttribute("aria-disabled") !== "true",
-      });
+        enabled: usable && settled,
+      };
+      targets.push(target);
+      plannedTargets.push({ ...target, enabled: usable });
     }
     if (element.dataset.gameObstacle && isVisible) obstacles.push(rect);
   });
@@ -159,6 +162,7 @@ export function readGeometry(root: HTMLElement): GeometrySnapshot {
     surfaces,
     plannedSurfaces,
     targets,
+    plannedTargets,
     elements,
     sectionBounds,
     sectionAnchors,

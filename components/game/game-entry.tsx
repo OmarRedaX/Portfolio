@@ -26,6 +26,8 @@ export function GameEntry(): React.JSX.Element {
   const cancel = useRef<HTMLButtonElement>(null);
   const keyboard = useRef(false);
   const operation = useRef(0);
+  // The viewport a session last found too small for the route; unchanged size means no retry.
+  const unsupportedAt = useRef<string | null>(null);
   const [keyboardEvidence, setKeyboardEvidence] = useState(false);
   const [sessionTrigger, setSessionTrigger] = useState<HTMLButtonElement | null>(null);
   const [Session, setSession] = useState<ComponentType<GameSessionProps> | null>(null);
@@ -46,8 +48,12 @@ export function GameEntry(): React.JSX.Element {
     setKeyboardEvidence(true);
   }
 
+  function viewportKey() {
+    return [innerWidth, innerHeight, document.documentElement.clientWidth].join("x");
+  }
+
   function eligible() {
-    if (!window.matchMedia("(min-width: 768px)").matches) {
+    if (!window.matchMedia("(min-width: 768px)").matches || unsupportedAt.current === viewportKey()) {
       setMessage(gameMode.largerWindow);
       return false;
     }
@@ -64,11 +70,15 @@ export function GameEntry(): React.JSX.Element {
     trigger.current?.focus({ preventScroll: true });
   }
 
-  const exit = useCallback(() => {
+  const exit = useCallback((reason?: "viewport") => {
     operation.current += 1;
     setSessionTrigger(null);
     setSession(null);
     setFailed(false);
+    if (reason === "viewport") {
+      unsupportedAt.current = viewportKey();
+      setMessage(gameMode.largerWindow);
+    }
     trigger.current?.focus({ preventScroll: true });
   }, []);
 
@@ -105,7 +115,7 @@ export function GameEntry(): React.JSX.Element {
   const fallback = (
     <section className={styles.preparation} aria-label={gameMode.entry}>
       <p role="status">{failed ? gameMode.failed : gameMode.loading}</p>
-      <button className="btn btn-secondary" onClick={exit} ref={focusPreparationExit}>
+      <button className="btn btn-secondary" onClick={() => exit()} ref={focusPreparationExit}>
         {gameMode.exitGame}
       </button>
     </section>
@@ -178,7 +188,7 @@ export function GameEntry(): React.JSX.Element {
                 <p role="status">{gameMode.failed}</p>
                 <button
                   className="btn btn-secondary"
-                  onClick={exit}
+                  onClick={() => exit()}
                   ref={focusPreparationExit}
                 >
                   {gameMode.exitGame}
